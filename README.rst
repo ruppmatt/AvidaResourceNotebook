@@ -77,9 +77,9 @@ with this project in the default_config folder.  You may copy the avida
 executable from `cbuild/work` to the default_config folder or, more
 recommended, soft-link avida into the default_config folder by first navigating
 to this project's root folder (and assuming avida's repository is a
-subfolder)::
+subfolder within)::
 
-   ln -s avida/cbuild/work/avida default_config/avida
+   ln -s ../avida/cbuild/work/avida default_config/avida
 
 By using the soft link method, updates to Avida can made either directly or
 through a pull without disrupting the structure of your project and will
@@ -113,6 +113,9 @@ following modifications:
 
 In this manner, the experiment will run with a single non-viable organism that
 cannot die over the course of resource evaluation.
+
+Settings that are specified in configurations passed to run_experirment will
+*override* these default files and values.
 
 
 Running Jupyter Notebook
