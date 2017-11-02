@@ -1,6 +1,5 @@
 avida/
 venv/
 .ipynb_checkpoints/
-default-config/avida
-default-config/data
-
+default_config/avida
+default_config/data
