@@ -3,7 +3,30 @@ Avida Resource Notebook
 #######################
 
 This repository contains an an example Jupyter/Python notebook that allows for
-a user to quickly run and plot resource configuration settings.
+a user to quickly run and plot resource configuration outputs.  There are two
+flavors of plotting available: static, inwhich a spatial resource file has
+already been printed and is ready for plotting or dynamic, where Avida is run
+from within the notebook and then the results are plotted.  The later uses
+temporary directories and files, so it is better suited for quick exploratory
+experiments.
+
+
+Requirements
+============
+
+The following utilities should be installed:
+
+   + Python3.5 or greater.  We're testing using Python3.6.
+   + The pip package for the respective python interpreter above.
+   + The virtualenv package (recommended)
+   + A c++ compiler (to build Avida, if needed)
+   + CMake (to build Avida, if needed)
+   + `jq`_, which allows for the stripping of output cells when commits are
+     staged (via git add).  See `Git Configuration and Automatic Erasure of
+     Output Material`_ for more information.
+
+.. _jq: https://stedolan.github.io/jq/
+
 
 Installation
 ============
@@ -18,15 +41,17 @@ file.  Avida, may be cloned from `Avida's github repository`_
 Python 3.6 is recommended for this project as is the user of a python virtual
 environment.
 
-To install the Python virtual environment::
+To install the Python virtual environment, navigate to the root directory of
+this project and execute (substituting PATH_TO_PYTHON3 with the actual path to
+the interpreter)::
 
    virtualenv -p PATH_TO_PYTHON3 venv
    source venv/bin/activate  # Type deactivate to turn off the virt. env
    pip install -r requirements.txt  # requirements.txt is provided
 
 At this point the Python virtual environment should be active, and the required
-packages for this notebook should be installed.  If you are on a *nix style
-system you may be able to locate the python3 interpreter by using::
+packages for this notebook should be installed.  If you are on a \*nix style
+system you may be able to locate the python3 interpreter's path by using::
 
    which python3
 
@@ -70,9 +95,9 @@ typing::
 Notes About Default Configuration Files
 =======================================
 
-The files provided in `default_config` are the current (as of this writing)
-default configuration files that are shipped with Avida, but with the following
-modifications:
+The files provided in `default_config` directory are the current (as of this
+writing) default configuration files that are shipped with Avida, but with the
+following modifications:
 
    + `avida.cfg` have all mutations disabled; death is disabled
    
@@ -90,9 +115,43 @@ In this manner, the experiment will run with a single non-viable organism that
 cannot die over the course of resource evaluation.
 
 
-AND NOW A WARNING
-=================
+Running Jupyter Notebook
+========================
+To run jupyter notebook, navigate to the root directory of this repository and
+type::
 
-More of a caution, really.  This project was created with *nix systems in mind,
+   jupyter notebook
+
+or::
+
+   python -m jupyter notebook
+
+Once the notebook opens in your default browser, select the notebook you wish
+to edit.  Do note that some paths are assumed in the example scripts.  The
+recommended settings the installation instructions with this repository in this
+document will work by default if followed with all recommendations.
+
+Do note that running Jupyter notebook will "lock" your terminal as its server
+runs.  To exit the server type CTRL-C twice to return to the command prompt.
+
+
+Git Configuration and Automatic Erasure of Output Material
+==========================================================
+
+To keep the notebook(s) in this project clean, we're stripping out all of the
+output as described by `Making Git and Jupyter Notebooks play nice`_.  In
+short, the method recommended simply strips the output (and resets some of the
+metadata) from the Python notebook when it is staged.  This helps to keep the
+notebook clean but *will erase output* as designed.  The configuration options
+are located in `.gitattributes` and `.gitconfig` files in the root directory of
+this repository.
+
+.. _Making Git and Jupyter Notebooks play nice: 
+   http://timstaley.co.uk/posts/making-git-and-jupyter-notebooks-play-nice/
+
+Windows Users
+==============
+
+More of a caution, really.  This project was created with \*nix systems in mind,
 so some features -- or installation instructions -- may not work without them
 being modified to fit into a Windows-centric world.
