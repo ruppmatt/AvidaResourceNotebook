@@ -24,6 +24,7 @@ The following utilities should be installed:
    + `jq`_, which allows for the stripping of output cells when commits are
      staged (via git add).  See `Git Configuration and Automatic Erasure of
      Output Material`_ for more information.
+   + ffmpeg must be installed in order for animations to render to movies.
 
 .. _jq: https://stedolan.github.io/jq/
 
