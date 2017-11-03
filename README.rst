@@ -32,6 +32,28 @@ The following utilities should be installed:
 Installation
 ============
 
+Quickest Start
+--------------
+
+Provided that all the requirements are available, navigate to the folder where you'd like the notebook and associated resources installed and copy and paste the following into your terminal::
+
+    git clone https://github.com/ruppmatt/AvidaResourceNotebook &&\
+    cd AvidaResourceNotebook &&\
+    git clone https://github.com/devosoft/avida && \
+    cd avida && ./build_avida && cd .. &&\
+    virtualenv -p `which python3` venv &&\
+    . venv/bin/activate && pip install -r requirements.txt &&\
+    ln -s ../avida/cbuild/work/avida default_config/avida &&\
+    cd default_config && ./avida && cd ..
+
+At that point you may run the notebook by typing::
+
+    jupyter notebook
+
+
+Step-by Step Directions
+-----------------------
+
 We recommend installing all supplimentary material such as avida's repository
 and the python virtual virtual environment in the directory this project has
 cloned into.  The required python packages are located in the requirements.txt
