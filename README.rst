@@ -155,7 +155,7 @@ following modifications:
    + `default-heads.org` has its h-divide instruction replaced with NOP-X
 
 In this manner, the experiment will run with a single non-viable organism that
-cannot die over the course of resource evaluation.
+cannot die or consume resources over the course of resource evaluation.
 
 Settings that are specified in configurations passed to run_experirment will
 *override* these default files and values.
