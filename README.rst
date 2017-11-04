@@ -50,6 +50,24 @@ At that point you may run the notebook by typing::
 
     jupyter notebook
 
+.. NOTE:: 
+   
+   Jupyter notebook will "lock" your terminal and open its "home page" in your
+   default a web browser.  Jupyter works by starting a web-server on your local
+   machine and creating the pages necessary for the web browser to use its
+   features.  It remains running while you are using it.
+
+   To deactivate the notebook server, go to the ternimal in which it is
+   running, hold CTRL and press C twice to turn off jupyter notebook.   Many
+   features of open notebooks and other pages created by Jupyter will no longer
+   be available once the server is shutoff. 
+
+   Also, the Quickest Start commands will turn on a Python virtual enviornment.
+   To turn it off execute the command `deactivate`.  (If the virtual
+   environment is activated, you should see a line beginning with [py] above
+   your usual command prompt.)
+
+
 
 Step-by Step Directions
 -----------------------
@@ -157,8 +175,13 @@ to edit.  Do note that some paths are assumed in the example scripts.  The
 recommended settings the installation instructions with this repository in this
 document will work by default if followed with all recommendations.
 
-Do note that running Jupyter notebook will "lock" your terminal as its server
-runs.  To exit the server type CTRL-C twice to return to the command prompt.
+.. NOTE::
+
+   Running Jupyter notebook will "lock" your terminal as its server runs.  To
+   exit the server type hold CTRL and press C twice in the terminal in which it
+   is running to return to the command prompt.  The notebooks from this
+   repository and other pages will no longer be available until jupyter
+   notebook is once more run.
 
 
 Git Configuration and Automatic Erasure of Output Material
