@@ -104,7 +104,9 @@ Our recommendation would be to clone avida into the root directory of this
 project and build it there::
 
    git clone https://github.com/devosoft/avida
+   cd avida
    ./build_avida
+   cd ..
 
 Note: development tools such as make, a c++ compiler, and CMake must be
 installed in order for the build process to proceed.  The folder `avida/` is
