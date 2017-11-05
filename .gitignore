@@ -1,5 +1,7 @@
 avida/
 venv/
 .ipynb_checkpoints/
+*.pyc
 default_config/avida
 default_config/data
+.idea
