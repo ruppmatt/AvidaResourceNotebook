@@ -59,7 +59,7 @@ body{
   align-content:stretch;
   position:relative;
   height:100%;
-  background-color:purple;
+  /*background-color:purple;*/
   min-height:100px;
 }
 
@@ -70,7 +70,7 @@ body{
   flex-direction:column;
   width:280px;
   min-width:280px;
-  background-color:var(--main-l-blue);
+  /*background-color:var(--main-l-blue);*/
   height:95%;
 }
 
@@ -83,7 +83,7 @@ body{
   padding-right:10px;
   padding-left:10px;
   height:95%;
-  background-color:var(--main-purple);
+  /*background-color:var(--main-purple);*/
   overflow:scroll;
 }
 
@@ -150,7 +150,23 @@ body{
   padding:5px;
 }
 
+.labled_widget{
+  display:flex;
+  flex-wrap:wrap;
+  flex-direction:row;
+  margin:10px;
+}
 
+.widget_label{
+  margin-right:5px;
+}
+
+.widget_row{
+  display:flex;
+  flex-direction:row;
+  flex-wrap:wrap;
+  justify-content:space-between;
+}
 
 
 #network {

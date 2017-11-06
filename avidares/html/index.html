@@ -53,10 +53,39 @@
         Form, Button, ValidationTextBox, CheckBox, RadioButton, HorizontalSlider
         ){
 
+
         var id = dom.byId;
         var set = html.set;
         var create = construct.create;
         var place = construct.place;
+
+
+        function labled_widget(label, widget){
+          var d = create('div', {class:'labled_widget'});
+          var l = create('label', {class:'widget_label', innerHTML:label}, d);
+          var w = (!('domNode' in widget)) ? place(widget, d) : place(widget.domNode,d);
+          return d;
+        }
+
+        function widget_row(widgets){
+          var d = create('div', {class:'widget_row'});
+          for (w of widgets){
+            place(w, d);
+          }
+          return d;
+        }
+
+        function radiobuttons(rbs, f){
+          var d = create('div', {class:'radiobuttons'});
+          for (r of rbs){
+            console.log(r);
+            place(r.domNode, d);
+            place(r.domNode, f.domNode);
+          }
+          return d;
+        }
+
+
 
         var w = construct.create('div', {class:'work'}, works);
 
@@ -68,10 +97,39 @@
         var w_form = construct.create('div', {class:'work_form'}, w);
         var w_output = construct.create('div', {class:'work_output'}, w);
 
-        create('p', {innerHTML:ipsum.paragraphs(100)}, w_form);
-
         set(w_id, '0');
         set(w_title, 'RESOURCE');
+
+        var d_form = new Form({}, 'work_form');
+        var lw = labled_widget('Title', new ValidationTextBox({value:'Untitled'},'work_title'));
+        place(lw, d_form.domNode);
+
+        var av_row = widget_row([
+          labled_widget('Random Seed', new ValidationTextBox({style:{width:'3em'},value:-1}, 'random_seed')),
+          labled_widget('WORLD_X', new ValidationTextBox({style:{width:'3em'}, value:60}, 'world_x')),
+          labled_widget('WORLD_Y', new ValidationTextBox({style:{width:'3em'}, value:60}, 'world_y'))
+        ]);
+        place(av_row, d_form.domNode);
+
+        var geo_row = widget_row([
+          labled_widget('Geometry', radiobuttons(
+            [
+              new RadioButton({checked:true, value:'grid', name:'geometry_rbs'}, 'rb_grid'),
+              new RadioButton({checked:false, value:'torus', name:'geometry_rbs'}, 'rb_torus')
+            ],d_form))
+          ]);
+
+          /*
+          labled_widget('Initial', new ValidationTextBox({style:{width:'3em'},value:0.0}), 'initial'),
+          labled_widget('Inflow', new ValidationTextBox({style:{width:'3em'},value:0.0}), 'inflow'),
+          labled_widget('Outflow', new ValidationTextBox({style:{width:'3em'},value:0.0}), 'outflow')
+        ]);*/
+        place(geo_row, d_form.domNode);
+
+
+
+        place(d_form.domNode, w_form);
+
 
 
 
