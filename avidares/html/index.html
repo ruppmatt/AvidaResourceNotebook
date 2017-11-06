@@ -4,29 +4,33 @@
 <head>
    <meta charset='UTF-8'>
    <title>Avida Resource Testing</title>
-   <link rel='stylesheet' type='text/css' href='../css/resources.css'>
+   <link rel='stylesheet' type='text/css' href='/avidares/css/resources.css'>
+   <link rel='stylesheet' type='text/css' href='https://ajax.googleapis.com/ajax/libs/dojo/1.12.2/dijit/themes/nihilo/nihilo.css'>
 </head>
 <body>
    <script src="//ajax.googleapis.com/ajax/libs/dojo/1.12.2/dojo/dojo.js" data-dojo-config="
    async:true,
    packages:[
       {name:'socketio', location:'https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.0.4/', main:'socket.io'},
-      {name:'lipsum', location:'/libs/', main:'holder-ipsum'}
+      {name:'lipsum', location:'/avidares/libs/', main:'holder-ipsum'}
       ]"></script>
 
     <div id='root'>
-    <div id='header'><span>Avida Resource Testing</span></div>
-    <div id='tools'>
-      <div id='commands' class='toolbox'>
-        <div class='tool' id='new_resource'>New RESOURCE</div>
-        <div class='tool' id='new_gradient'>New GRADIENT_RESOURCE</div>
-        <div class='tool' id='reset'>Reset</div>
+      <div id='header'><span>Avida Resource Testing</span></div>
+      <div id='workspace'>
+        <div id='tools'>
+          <div id='commands' class='toolbox'>
+            <div class='tool' id='new_resource'>New RESOURCE</div>
+            <div class='tool' id='new_gradient'>New GRADIENT_RESOURCE</div>
+            <div class='tool' id='reset'>Reset</div>
+          </div>
+          <div id='experiments' class='toolbox'></div>
+        </div>
+        <div id='works'></div>
       </div>
-      <div id='experiments' class='toolbox'></div>
+      <div id='network'>Offline</div>
     </div>
-    <div id='works'></div>
 
-    <div id='network'>Offline</div>
 
 <script>
     require([
@@ -38,27 +42,39 @@
       ,'lipsum'
       ,'socketio'
       ,'dojo/domReady!'
-      ,'dijit/layout/BorderContainer'
-      ,'dijit/layout/ContentPane'
+      ,'dijit/form/Form'
+      ,'dijit/form/Button'
+      ,'dijit/form/ValidationTextBox'
+      ,'dijit/form/CheckBox'
+      ,'dijit/form/RadioButton'
+      ,'dijit/form/HorizontalSlider'
     ],
       function(dom, construct, html, on, parser, ipsum, socketio, ready,
-        BorderContainer, ContentPane){
+        Form, Button, ValidationTextBox, CheckBox, RadioButton, HorizontalSlider
+        ){
 
         var id = dom.byId;
         var set = html.set;
+        var create = construct.create;
+        var place = construct.place;
 
-        var n = construct.create('div', {class:'work'}, works);
-        var h = construct.create('div', {class:'work_header'}, n);
+        var w = construct.create('div', {class:'work'}, works);
+
+        var h = construct.create('div', {class:'work_header'}, w);
 
         var w_id = construct.create('div', {class:'work_id'}, h);
         var w_title = construct.create('div', {class:'work_title'}, h);
-        var w_form = construct.create('div', {class:'work_form'}, n);
-        var w_output = construct.create('div', {class:'work_output'}, n);
 
-        set( w_id, '0');
+        var w_form = construct.create('div', {class:'work_form'}, w);
+        var w_output = construct.create('div', {class:'work_output'}, w);
+
+        create('p', {innerHTML:ipsum.paragraphs(100)}, w_form);
+
+        set(w_id, '0');
         set(w_title, 'RESOURCE');
-        set(w_form, ipsum.paragraph());
-        set(w_output, ipsum.sentence());
+
+
+
 
         function create_res_work(){
           n = construct.create('div', {class:'work,resource'}, 'works');
