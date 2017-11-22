@@ -56,6 +56,7 @@ class FactoredResourcePlot:
             self._pbar.update(value)
         if value == self._num_frames-1:
             self._pbar.finish()
+            self._fig.show(False)
 
     def _is_left_edge(self, ndx):
         return ndx < self._dims[1]
@@ -188,7 +189,6 @@ class FactoredResourcePlot:
                                    fargs=[], interval=self._interval, save_count=self._num_frames,
                                    blit=blit)
         self._last_anim = anim
-        self._fig.show(False)
         return anim
 
 
@@ -203,7 +203,7 @@ class FactoredExperimentIterator:
     '''
 
     def __init__(self, fexpr):
-        xfacts = [list(a) for a in [zip(repeat(k),v) for k,v in fexpr.items()]]
+        xfacts = [list(a) for a in [zip(repeat(k),v) for k,v in fexpr]]
         xfacts =  [list(a) for a in product(*xfacts)]
         self._xfacts = xfacts
         self._ndx = 0
@@ -233,9 +233,8 @@ class FactoredExperimentIterator:
 
 class FactoredExperiment:
 
-    _default_args = ' -s {seed} -set WORLD_X {world_x} -set WORLD_Y {world_y} '+\
-                    ' -set EVENT_FILE {events_file}  -set ENVIRONMENT_FILE {environment_file}' +\
-                    ' -set DATA_DIR {data_dir}'
+    _default_args = ' -s {seed} -set WORLD_X {world_x} -set WORLD_Y {world_y} ' +\
+        ' -set DATA_DIR {data_dir} -set ENVIRONMENT_FILE {environment_file} -set EVENT_FILE {events_file}'
 
     _default_args_dict = {
         'seed':-1,
@@ -243,23 +242,32 @@ class FactoredExperiment:
         'world_y':60,
     }
 
-    _default_events =\
-        "u begin inject default-heads.org\n" +\
-        "u 0:{interval}:end PrintSpatialResources {datafile}\n" +\
-        "u {end} exit\n"
-
     _default_events_dict = {
         'interval':100,
         'end':10000
     }
 
+    _default_events_string =\
+        'u begin Inject default-heads.org\n' +\
+        'u 0:{interval}:end PrintSpatialResources {datafile}\n' +\
+        'u {end} exit'
 
-    def __init__(self, factors, procs=4, exec_directory='default_config', **kw):
+
+    def __init__(self, env_string, factors, args_string='', args_dict={},
+        events_dict={}, procs=4, exec_directory='default_config', **kw):
+        self._env_string = env_string
         self._factors = factors
-        self._factor_names = factors.keys()
+        self._factor_names = [k for k,v in self._factors]
         self._exec_dir = exec_directory
         self._max_procs = procs
         self._reset()
+        self._env_string = env_string
+        self._events_str = self._default_events_string
+        self._events_dict = self._default_events_dict
+        self._events_dict.update(events_dict)
+        self._args_str = self._default_args + ' ' + args_string
+        self._args_dict = self._default_args_dict
+        self._args_dict.update(args_dict)
 
 
     def _reset(self):
@@ -273,7 +281,7 @@ class FactoredExperiment:
         self._stdout_files = []
         self._child_procs = []
         self._child_exit_codes = {}
-        self._used_args_dict = None
+
 
     def get_factors(self):
         return self._factors
@@ -281,7 +289,7 @@ class FactoredExperiment:
     def get_factor_names(self):
         return self._factor_names
 
-    def run_experiments(self, env_string, env_dict, use_pbar=True):
+    def run_experiments(self, use_pbar=True):
 
         if self._ready:
             self._reset()
@@ -295,7 +303,6 @@ class FactoredExperiment:
         if len(self) > 0:
 
             # Create a common data directory for all output
-            self._used_args_dict = self._default_args_dict.copy()
             self._data_dir_handle = TemporaryDirectory()  # the directory will be deleted when this goes out of scope
             self._data_dir = self._data_dir_handle.name
 
@@ -309,27 +316,27 @@ class FactoredExperiment:
                     with NamedTemporaryFile(dir=self._data_dir, delete=False) as res_file:
                         self._output_files.append(res_file.name)
 
+
                     # Create our experiment-specific events file (for the data filename differs)
                     with NamedTemporaryFile(dir=self._data_dir, mode='w', delete=False) as events_file:
-                        events_str = self._default_events.format(
-                            datafile=self._output_files[-1], **self._default_events_dict)
+                        events_str = self._events_str\
+                            .format(datafile=self._output_files[-1], **self._events_dict)
                         events_file.write(events_str)
                         self._events_files.append(events_file.name)
 
                     # Patch our default environment dictionary with our experiment
                     # factors' settings and create our environment file
-                    settings_dict = self._patch_settings(settings, env_dict)
-                    settings_str = env_string.format(**settings_dict)
+                    env_str = self._env_string.format(**dict(settings))
                     with NamedTemporaryFile(dir=self._data_dir, mode='w', delete=False) as env_file:
-                        env_file.write(settings_str)
+                        env_file.write(env_str)
                         self._env_files.append(env_file.name)
 
                     # Set up our arguments
-                    args_str = self._default_args.format(
+                    args_str = self._args_str.format(
                         events_file=self._events_files[-1],
                         environment_file=self._env_files[-1],
                         data_dir = self._data_dir,
-                        **self._used_args_dict)
+                        **self._args_dict)
 
                     # Create an output file to hold our stdout/err streams
                     self._stdout_files.append(NamedTemporaryFile(dir=self._data_dir, delete=False, mode='w'))
@@ -391,32 +398,16 @@ class FactoredExperiment:
     def animate(self, data_transform=None, **kw):
         if data_transform is not None:  # Transform the data if requested
             self._data = data_transform(self._data)
-        return SingleExperimentAnimation(self._data, world_size=self.get_world_size(), **kw).animate(**kw)
+        return FactoredResourcePlot(self, **kw).animate(**kw)
 
 
 
     def get_world_size(self):
-        return self._used_args_dict['world_x'], self._used_args_dict['world_y']
-
-
-    def get_default_args(self):
-        return self._default_args
-
-    def get_data_dir(self):
-        if not self._ready:
-            raise LookupError('The experiments have not been completed.')
-        return self._data_dir
-
-
-
-    def get_output_files(self):
-        if not self._ready:
-            raise LookupError('The experiments have not been completed.')
-        return self._output_files
+        return self._args_dict['world_x'], self._args_dict['world_y']
 
 
     def get_dims(self):
-        dims = [len(val) for key,val in self._factors.items()]
+        dims = [len(val) for key,val in self._factors]
         return dims
 
     def _update_pbar(self, pbar):
@@ -430,16 +421,9 @@ class FactoredExperiment:
         print ('EXIT CODE: {}'.format(self._child_procs[ndx].returncode))
         print('ERROR RUNNING EXPERIMENT.  STDOUT/ERR FOLLOWS')
         print('---------------------------------------------')
-        with open(self._stdout_files[ndx], 'r') as f:
+        with open(self._stdout_files[ndx].name, 'r') as f:
             print(f.read())
         print('\n\n\n')
-
-
-    def _patch_settings(self, overrides, env_dict):
-        patched = env_dict.copy()
-        for factor,value in overrides:
-            patched[factor]=value
-        return patched
 
 
     def __getitem__(self, ndx):
@@ -451,63 +435,3 @@ class FactoredExperiment:
 
     def __len__(self):
         return len(self.__iter__())
-
-
-
-
-class ResourceFactoredExperiment(FactoredExperiment):
-
-    _environment = "RESOURCE resource:initial={initial}:inflow={inflow}:outflow={outflow}:"\
-        + "inflowx1={in_left}:inflowx2={in_right}:inflowy1={in_top}:inflowy2={in_bottom}:"\
-        + "geometry={geometry}:"\
-        + "xdiffuse={x_diffuse}:xgravity={x_gravity}:ydiffuse={y_diffuse}:ygravity={y_gravity}"
-
-    _default_environment = {
-        'initial':0.0,
-        'inflow':0.0,
-        'outflow':0.0,
-        'in_left':29,
-        'in_right':29,
-        'in_top':29,
-        'in_bottom':29,
-        'out_left':-99,
-        'out_right':-99,
-        'out_top':-99,
-        'out_bottom':-99,
-        'geometry':'torus',
-        'x_diffuse':0.0,
-        'x_gravity':0.0,
-        'y_diffuse':0.0,
-        'y_gravity':0.0
-    }
-
-
-    def __init__(self, factors, **kw):
-        super().__init__(factors, *kw)
-
-    def get_default(self):
-        return self._default_environment.copy()
-
-    def get_environment(self):
-        return self._environment.copy()
-
-    def run_experiments(self, env_string=None, env_dict=None, pbar=None):
-        if env_string is None:
-            env_string = self._environment
-
-        if env_dict is not None:
-            tmp = self._default_environment.copy()
-            tmp.update(env_dict)
-            env_dict = tmp
-        else:
-            env_dict = self._default_environment
-
-        super().run_experiments(env_string, env_dict)
-
-
-
-
-class GradientFactoredExperiment(FactoredExperiment):
-
-    def __init__(self, factors):
-        self.super(factors)
