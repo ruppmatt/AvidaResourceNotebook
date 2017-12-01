@@ -2,6 +2,7 @@ from itertools import product, repeat
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 import subprocess
 import os
+import time
 from collections import OrderedDict, Iterable
 import pdb
 import pandas
@@ -18,20 +19,27 @@ from .utilities import ColorMaps, TimedProgressBar, TimedCountProgressBar
 
 class FactoredResourcePlot:
 
+    _multi_res_cmap = [ColorMaps.green, ColorMaps.red, ColorMaps.blue]
+
     def __init__(self, experiment, interval=50, cmap=None, post_axis_fn=None,
         post_frame_fn=None, use_pbar=True, title=None, **kw):
         self._experiment = experiment
+
         self._dims = experiment.get_dims()
         self._world_size = experiment.get_world_size()
         self._interval = interval
-        self._cmap = cmap if cmap is not None else ColorMaps.green
         self._factors = None
         self._post_axis_fn = post_axis_fn
         self._post_frame_fn = post_frame_fn
         self._vmin = None
         self._vmax = None
         self._num_frames = None
+        self._is_multi = None
         self._prepare_data()
+        if not self._is_multi:
+            self._cmap = ColorMaps.green if cmap is None else cmap
+        else:
+            self._cmap = _multi_res_cmap if cmap is None else cmap
         self._pbar =\
             TimedProgressBar(title='Animating', max_value=self._num_frames) if use_pbar == True else None
         self._last_anim = None
@@ -59,13 +67,22 @@ class FactoredResourcePlot:
             self._fig.show(False)
 
     def _is_left_edge(self, ndx):
+        if len(self._dims)== 1:
+            return ndx == 0
         return ndx < self._dims[1]
 
     def _is_bottom_edge(self, ndx):
+        if len(self._dims) == 1:
+            return True
         return (ndx % self._dims[1]) == self._dims[1]-1
 
     def _fact2label(self, ax_ndx, fact_ndx):
-        key,value = self._factors[ax_ndx][fact_ndx]
+        if len(self._dims) > 1:
+            key,value = self._factors[ax_ndx][fact_ndx]
+        else:
+            if fact_ndx == 1:
+                return ''
+            key,value = self._factors[ax_ndx][0]
         return '{} = {}'.format(key,value)
 
     def post_axis(self, ndx, fnum, update):
@@ -76,6 +93,7 @@ class FactoredResourcePlot:
 
     def _prepare_data(self):
         self._num_frames, cols = self._experiment.get_data()[0][1].shape
+        self._is_multi = False
         self._factors = []
         for facts,data in self._experiment.get_data():
             self._factors.append(facts)
@@ -90,7 +108,7 @@ class FactoredResourcePlot:
 
     def _setup_figure(self):
         n_x = self._dims[0]  # Number of columns
-        n_y = self._dims[1]  # Number of rows
+        n_y = self._dims[1]  if len(self._dims) > 1 else 1 # Number of rows
         w_ratios = [1]*n_x + [0.1]
         h_ratios = [1]*n_y + [0.5]
         gs = mpl.gridspec.GridSpec(n_y+1, n_x+1, width_ratios=w_ratios, height_ratios=h_ratios)
@@ -174,7 +192,7 @@ class FactoredResourcePlot:
             return self._setup.get_drawables()
 
 
-    def animate(self, force=False, blit=True):
+    def animate(self, force=False, blit=True, **kw):
         if self._last_anim is not None and force == False:
             return self._last_anim
         self._fig = plt.figure()
@@ -355,7 +373,7 @@ class FactoredExperiment:
                     # Detect a full pool and wait for a spot to open
                     if len(active_procs) >= self._max_procs:
                         self._update_pbar(pbar)
-                        os.wait()
+                        time.sleep(.1)
                         active_procs.difference_update(
                             [p for p in active_procs if p.poll() is not None])
 
@@ -365,22 +383,27 @@ class FactoredExperiment:
             # Finish up
             while len(active_procs) > 0:
                 self._update_pbar(pbar)
-                os.wait()
+                time.sleep(.1)
                 if pbar:
-                    pbar.update(pbar.value+1)
+                    self._update_pbar(pbar)
                 active_procs.difference_update(
                     [p for p in active_procs if p.poll() is not None])
 
+
             self._update_pbar(pbar)
 
+            was_errors = False
             for ndx, p in enumerate(self._child_procs):
                 if p.returncode != 0:
                     self._dump_error(ndx)
+                    was_errors = True
+
 
         if pbar:
             pbar.finish()
 
-        self._ready = True
+        self._ready = not was_errors
+        return self if not was_errors else None
 
 
     def get_data(self):
@@ -395,10 +418,10 @@ class FactoredExperiment:
         return self._data
 
 
-    def animate(self, data_transform=None, **kw):
+    def animate(self, data_transform=None, blit=True, force=False, **kw):
         if data_transform is not None:  # Transform the data if requested
             self._data = data_transform(self._data)
-        return FactoredResourcePlot(self, **kw).animate(**kw)
+        return FactoredResourcePlot(self, **kw).animate(force, blit)
 
 
 

@@ -1,3 +1,4 @@
+import pyximport; pyximport.install()
 import pdb
 import pandas
 import subprocess
@@ -13,19 +14,29 @@ from matplotlib import animation, rc
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.text import Text
+import pdb
 
 from IPython.display import HTML
 
-from .utilities import TimedSpinProgessBar, TimedProgressBar, write_temp_file, ColorMaps
+from .utilities import TimedSpinProgessBar, TimedProgressBar, write_temp_file,\
+    ColorMaps, TitleElapsedProgressBar
+from . import blender
+
+import multiprocessing as mproc
 
 
-class SingleExperimentAnimation:
+class ResourceExperimentAnimation:
+
+    _multi_res_cmap = [ColorMaps.green, ColorMaps.red, ColorMaps.blue]
 
     def __init__(self, data, world_size, title='', cmap=None, use_pbar=True, interval=50,
             post_plot_fn=[], **kw):
         self._data = data
+        self._resources = None
+        self._is_multi = None
         self._world_size = world_size
         self._cmap = ColorMaps.green if cmap is None else cmap
+        self._colors = ['green', 'red', 'blue']
         self._num_frames = None
         self._interval = interval
         self._post_plot_fn = []
@@ -33,31 +44,65 @@ class SingleExperimentAnimation:
         self._last_animation = None
         self._vmin = None
         self._vmax = None
+        self._cmap_norm = None
+        self._cbar = None
         self._prepare_data()
         self._pbar =\
             TimedProgressBar(title='Building Animation', max_value=self._num_frames) if use_pbar else None
         self._last_anim = None
         self._title = title
+        if not self._is_multi:
+            self._cmap = ColorMaps.green if cmap is None else cmap
+        else:
+            self._cmap = self._multi_res_cmap if cmap is None else cmap
+        self._scalar_mappable = None
+
 
     def _prepare_data(self):
+        self._resources = self._data.iloc[:,1].unique()
+        self._is_multi = True if len(self._resources) > 1 else False
+        self._data = self._data
+        if len(self._resources) > 3:
+            raise ValueError('ResourceExperimentAnimation only allows up to 3 resources.')
         self._vmax = self._data.iloc[:, 2:].max().max()  # Maximum abundance value
         self._vmin = self._data.iloc[:, 2:].min().min()  # Minimum abundance value
-        self._num_frames = len(self._data) # Number of frames to animate
+        self._num_frames = len(self._data.iloc[:,0].unique()) # Number of frames to animate
+
 
     def setup_figure(self):
-        gs = mpl.gridspec.GridSpec(2, 2, width_ratios=[1, 0.1], height_ratios=[1, 0.02])
+        if not self._is_multi:
+            gs = mpl.gridspec.GridSpec(2, 2, width_ratios=[1, 0.1], height_ratios=[1, 0.1])
+        else:
+            gs = mpl.gridspec.GridSpec(3, 2, width_ratios=[1, 0.1], height_ratios=[1, 0.1, 0.1])
+
         ax = plt.subplot(gs[0,0])
         z = np.zeros(self._world_size)
-        im = plt.imshow(z, cmap=self._cmap,
+        base_cmap = self._cmap if not self._is_multi else ColorMaps.gray
+        im = plt.imshow(z, cmap=base_cmap,
                 origin='upper', interpolation='nearest',
                 vmin=self._vmin, vmax=self._vmax)
         ax.tick_params(axis='both', bottom='off', labelbottom='off',
                                left='off', labelleft='off')
         norm = mpl.colors.Normalize(self._vmin, self._vmax)
-        cax = plt.subplot( gs[0:,-1] )
-        cbar = mpl.colorbar.ColorbarBase(cax, cmap=self._cmap, norm=norm, orientation='vertical')
-        cbar.set_label('Abundance')
-        ax = plt.subplot(gs[-1,0:-1])
+        self._cmap_norm = norm
+        cax = plt.subplot( gs[:,-1] )
+        if not self._is_multi:
+            self._cbar = mpl.colorbar.ColorbarBase(cax, cmap=self._cmap, norm=norm, orientation='vertical')
+            self._scalar_mappable = mpl.cm.ScalarMappable(cmap=self._cmap, norm=norm)
+            self._cbar.set_label('Abundance')
+        else:
+            cbar = mpl.colorbar.ColorbarBase(cax, cmap=ColorMaps.gray, norm=norm, orientation='vertical')
+            cbar.set_label('Abundance')
+            self._cbar = []
+            self._scalar_mappable = []
+            for rndx,res in enumerate(self._resources):
+                self._cbar.append(mpl.colorbar.ColorbarBase(cax, cmap=self._cmap[rndx], norm=norm, orientation='vertical'))
+                self._scalar_mappable.append(mpl.cm.ScalarMappable(cmap=self._cmap[rndx], norm=norm))
+
+        if not self._is_multi:
+            ax = plt.subplot(gs[-1,0:-1])
+        else:
+            ax = plt.subplot(gs[-2,0:-1])
         ax.set_ylim(0,1)
         ax.set_xlim(0,1)
         ax.tick_params(axis='both', bottom='off', labelbottom='off',
@@ -65,20 +110,21 @@ class SingleExperimentAnimation:
         ax.set_frame_on(False)
         update = ax.text(0.5,0.5,'Update n/a', ha='center')
         plt.suptitle(self._title)
+
+        if self._is_multi:
+            ax = plt.subplot(gs[-1,:])
+            legend_handles = []
+            for ndx,res_name in enumerate(self._resources):
+                legend_handles.append(mpl.patches.Patch(color=self._colors[ndx], label=res_name))
+            plt.legend(handles=legend_handles, loc='center', frameon=False, ncol=len(legend_handles))
+            ax.tick_params(axis='both', bottom='off', labelbottom='off',
+                                   left='off', labelleft='off')
+
         self._to_anim = {'plot':im, 'update':update}
 
     def get_drawables(self):
         return self._to_anim.values()
 
-    def start_pbar(self):
-        if self._pbar is not None:
-            self._pbar.start()
-
-    def update_pbar(self, value):
-        if self._pbar is not None:
-            self._pbar.update(value)
-        if value == self._num_frames-1:
-            self._pbar.finish()
 
     def post_axis(self, update, fnumber):
         for post_fn in self._post_plot_fn:
@@ -101,14 +147,27 @@ class SingleExperimentAnimation:
             self._setup = setup
 
         def __call__(self):
-            self._setup.start_pbar()
             ndx = 0
             data = self._setup._data
             world_size = self._setup._world_size
-            while ndx < len(data):
-                yield ndx,\
-                    data.iloc[ndx, 0], data.iloc[ndx, 2:].values.reshape(world_size).astype('float')
-                ndx = ndx + 1
+            updates = data.iloc[:,0].unique()
+            multi_res_data = None
+
+            if self._setup._is_multi:
+                multi_res_colors = blender.blend(data, self._setup._resources, self._setup._scalar_mappable)
+
+            if self._setup._pbar is not None:
+                self._setup._pbar.start()
+
+            for ndx,update in enumerate(updates):
+                if not self._setup._is_multi:
+                    yield ndx,\
+                        update, data.iloc[ndx, 2:].values.reshape(world_size).astype('float')
+                else:
+                    yield ndx, update, multi_res_colors[ndx,:,:].reshape((world_size[0],world_size[1],3))
+
+
+
 
 
     class DrawFrame:
@@ -125,7 +184,12 @@ class SingleExperimentAnimation:
             self._setup._to_anim['update'].set_text(f'Update {update}')
 
             self._setup.post_axis(update, ndx)
-            self._setup.update_pbar(ndx)
+
+            if self._setup._pbar:
+                self._setup._pbar.update(ndx)
+                if ndx == self._setup._num_frames - 1:
+                    self._setup._pbar.finish()
+
             return self._setup.get_drawables()
 
 
@@ -134,9 +198,9 @@ class SingleExperimentAnimation:
         if self._last_anim is not None and force == False:
             return self._last_anim
         self._fig = plt.figure()
-        init_frame = SingleExperimentAnimation.InitFrame(self)
-        data_gen = SingleExperimentAnimation.GenerateFrameData(self)
-        draw_frame = SingleExperimentAnimation.DrawFrame(self)
+        init_frame = ResourceExperimentAnimation.InitFrame(self)
+        data_gen = ResourceExperimentAnimation.GenerateFrameData(self)
+        draw_frame = ResourceExperimentAnimation.DrawFrame(self)
         anim = animation.FuncAnimation(self._fig, draw_frame, init_func=init_frame,
                                        frames=data_gen,
                                        fargs=[],
@@ -154,7 +218,7 @@ class SingleExperimentAnimation:
 
 
 
-class SingleResourceExperiment:
+class ResourceExperiment:
 
     default_args = '-s -1'
     default_events = '\
@@ -197,6 +261,7 @@ class SingleResourceExperiment:
         res_path = f'{self._data_dir.name}/resources.dat'
         self._data = pandas.read_csv(res_path, comment='#', skip_blank_lines=True,
                                delimiter=' ', header=None)
+        return self
 
 
 
@@ -205,7 +270,7 @@ class SingleResourceExperiment:
         if data_transform is not None:  # Transform the data if requested
             self._data = data_transform(self._data)
 
-        return SingleExperimentAnimation(self._data, world_size=self._world_size, **kw).animate(**kw)
+        return ResourceExperimentAnimation(self._data, world_size=self._world_size, **kw).animate(**kw)
 
 
     def _run_process(self, args):
