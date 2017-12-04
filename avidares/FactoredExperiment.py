@@ -209,7 +209,6 @@ class ResourceFactoredExperimentAnimation:
                 for factors, expr_data in experiment:
                     blended.append(blend(expr_data, colors, self._setup._resources))
                 for ndx, update in enumerate(updates):
-                    update = blended[0][ndx,0]
                     data = []
                     for bdata in blended:
                         data.append(bdata[ndx].reshape(world_x, world_y, 3))
