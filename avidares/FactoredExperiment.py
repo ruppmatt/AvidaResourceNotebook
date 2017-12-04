@@ -13,11 +13,11 @@ from matplotlib import animation
 
 import seaborn as sb
 import numpy as np
-from .utilities import ColorMaps, TimedProgressBar, TimedCountProgressBar
+from .utilities import ColorMaps, TimedProgressBar, TimedCountProgressBar, blend
 
 
 
-class FactoredResourcePlot:
+class ResourceFactoredExperimentAnimation:
 
     _multi_res_cmap = [ColorMaps.green, ColorMaps.red, ColorMaps.blue]
 
@@ -35,11 +35,14 @@ class FactoredResourcePlot:
         self._vmax = None
         self._num_frames = None
         self._is_multi = None
+        self._colors = ['green', 'red', 'blue']
+        self._resources = None
         self._prepare_data()
+        self._title = title if title is not None else ''
         if not self._is_multi:
             self._cmap = ColorMaps.green if cmap is None else cmap
         else:
-            self._cmap = _multi_res_cmap if cmap is None else cmap
+            self._cmap = self._multi_res_cmap if cmap is None else cmap
         self._pbar =\
             TimedProgressBar(title='Animating', max_value=self._num_frames) if use_pbar == True else None
         self._last_anim = None
@@ -92,10 +95,16 @@ class FactoredResourcePlot:
         pass
 
     def _prepare_data(self):
-        self._num_frames, cols = self._experiment.get_data()[0][1].shape
-        self._is_multi = False
         self._factors = []
         for facts,data in self._experiment.get_data():
+            if self._num_frames is None:
+                self._num_frames = len(data.iloc[:,0].unique())
+            if self._resources is None:
+                self._resources = np.unique(data.iloc[:,1])
+                if len(self._resources) > 1:
+                    self._is_multi = True
+                if len(self._resources) > 3:
+                    raise ValueError('Animations are currently limited to three resources')
             self._factors.append(facts)
             abundances = data.iloc[:,2:].astype('float')
             d_min = abundances.min().min()
@@ -109,15 +118,22 @@ class FactoredResourcePlot:
     def _setup_figure(self):
         n_x = self._dims[0]  # Number of columns
         n_y = self._dims[1]  if len(self._dims) > 1 else 1 # Number of rows
-        w_ratios = [1]*n_x + [0.1]
-        h_ratios = [1]*n_y + [0.5]
-        gs = mpl.gridspec.GridSpec(n_y+1, n_x+1, width_ratios=w_ratios, height_ratios=h_ratios)
+
+        if not self._is_multi:
+            w_ratios = [1]*n_x + [0.25]
+            h_ratios = [1]*n_y + [0.25]
+            gs = mpl.gridspec.GridSpec(n_y+1, n_x+1, width_ratios=w_ratios, height_ratios=h_ratios)
+        else:
+            w_ratios = [1]*n_x + [0.25]
+            h_ratios = [1]*n_y + [0.25]*2
+            gs = mpl.gridspec.GridSpec(n_y+2, n_x+1, width_ratios=w_ratios, height_ratios=h_ratios)
         ndx = 0
         plots = []
         for col in range(n_x):
             for row in range(n_y):
                 ax = plt.subplot(gs[row,col])
-                plot = plt.imshow(np.zeros(self._world_size), cmap=self._cmap,
+                base_cmap = self._cmap if not self._is_multi else ColorMaps.gray
+                plot = plt.imshow(np.zeros(self._world_size), cmap=base_cmap,
                     origin='upper', interpolation='nearest',
                     vmin=self._vmin, vmax=self._vmax)
                 ax.tick_params(axis='both', bottom='off', labelbottom='off',
@@ -130,16 +146,37 @@ class FactoredResourcePlot:
                 ndx = ndx+1
         norm = mpl.colors.Normalize(self._vmin, self._vmax)
         cax = plt.subplot( gs[:,-1] )
-        cbar = mpl.colorbar.ColorbarBase(cax, cmap=self._cmap, norm=norm, orientation='vertical')
+        if not self._is_multi:
+            cbar = mpl.colorbar.ColorbarBase(cax, cmap=self._cmap, norm=norm, orientation='vertical')
+        else:
+            cbar = mpl.colorbar.ColorbarBase(cax, cmap=ColorMaps.gray, norm=norm, orientation='vertical')
         cbar.set_label('Abundance')
-        ax = plt.subplot(gs[-1,0:-1])
+
+        if not self._is_multi:
+            ax = plt.subplot(gs[-1,0:-1])
+        else:
+            ax = plt.subplot(gs[-2,0:-1])
         ax.tick_params(axis='both', bottom='off', labelbottom='off',
                        left='off', labelleft='off')
         ax.set_frame_on(False)
         ax.set_ylim(0,1)
         ax.set_xlim(0,1)
         update = ax.text(0.5,0.25,'Update n/a', ha='center', va='bottom')
+
+        if self._is_multi:
+            ax = plt.subplot(gs[-1,:-1])
+            legend_handles = []
+            for ndx,res_name in enumerate(self._resources):
+                legend_handles.append(mpl.patches.Patch(color=self._colors[ndx], label=res_name))
+            plt.legend(handles=legend_handles, loc='center', frameon=False, ncol=len(legend_handles))
+            ax.tick_params(axis='both', bottom='off', labelbottom='off',
+                                   left='off', labelleft='off')
+            ax.set_frame_on(False)
+
+        plt.suptitle(self._title)
+
         self._to_draw = {'plots':plots, 'update':update}
+
 
     def __getitem__(self, key):
         return self._to_draw[key]
@@ -162,16 +199,30 @@ class FactoredResourcePlot:
             self._setup.start_pbar()
             ndx = 0
             experiment = self._setup._experiment.get_data()
-            n_rows,n_columns = experiment[0][1].shape
-            while ndx < n_rows:
-                data = []
-                update = experiment[0][1].iloc[ndx,0]
+            updates = np.unique(experiment[0][1].iloc[:,0])
+
+            if self._setup._is_multi:
+                blended = []
+                num_resources = len(self._setup._resources)
+                world_x, world_y = self._setup._experiment.get_world_size()
+                colors = list(map(lambda x: x.colors, self._setup._cmap[0:num_resources]))
                 for factors, expr_data in experiment:
-                    data.append(\
-                    expr_data.iloc[ndx,2:].astype('float')\
-                    .values.reshape(self._setup._experiment.get_world_size()))
-                yield ndx, update, data
-                ndx = ndx + 1
+                    blended.append(blend(expr_data, colors, self._setup._resources))
+                for ndx, update in enumerate(updates):
+                    update = blended[0][ndx,0]
+                    data = []
+                    for bdata in blended:
+                        data.append(bdata[ndx].reshape(world_x, world_y, 3))
+                    yield ndx, update, data
+            else:
+                for ndx, update in enumerate(updates):
+                    data = []
+                    update = experiment[0][1].iloc[ndx,0]
+                    for factors, expr_data in experiment:
+                        data.append(\
+                        expr_data.iloc[ndx,2:].astype('float')\
+                        .values.reshape(self._setup._experiment.get_world_size()))
+                    yield ndx, update, data
             raise StopIteration
 
 
@@ -196,9 +247,9 @@ class FactoredResourcePlot:
         if self._last_anim is not None and force == False:
             return self._last_anim
         self._fig = plt.figure()
-        init_fn = FactoredResourcePlot.InitFunc(self)
-        frame_gen = FactoredResourcePlot.FrameDataGenerator(self)
-        frame_draw = FactoredResourcePlot.DrawFrame(self)
+        init_fn = ResourceFactoredExperimentAnimation.InitFunc(self)
+        frame_gen = ResourceFactoredExperimentAnimation.FrameDataGenerator(self)
+        frame_draw = ResourceFactoredExperimentAnimation.DrawFrame(self)
 
         anim = animation.FuncAnimation(self._fig,
                                    frame_draw,
@@ -214,7 +265,7 @@ class FactoredResourcePlot:
 
 
 
-class FactoredExperimentIterator:
+class ResourceFactoredExperimentIterator:
     '''
     Iterator for FactoredExperiments
     Returns a list of dictionaries
@@ -249,7 +300,7 @@ class FactoredExperimentIterator:
 
 
 
-class FactoredExperiment:
+class ResourceFactoredExperiment:
 
     _default_args = ' -s {seed} -set WORLD_X {world_x} -set WORLD_Y {world_y} ' +\
         ' -set DATA_DIR {data_dir} -set ENVIRONMENT_FILE {environment_file} -set EVENT_FILE {events_file}'
@@ -421,7 +472,7 @@ class FactoredExperiment:
     def animate(self, data_transform=None, blit=True, force=False, **kw):
         if data_transform is not None:  # Transform the data if requested
             self._data = data_transform(self._data)
-        return FactoredResourcePlot(self, **kw).animate(force, blit)
+        return ResourceFactoredExperimentAnimation(self, **kw).animate(force, blit)
 
 
 
@@ -450,10 +501,10 @@ class FactoredExperiment:
 
 
     def __getitem__(self, ndx):
-        return FactoredExperimentIterator(self._factors)[ndx]
+        return ResourceFactoredExperimentIterator(self._factors)[ndx]
 
     def __iter__(self):
-        return FactoredExperimentIterator(self._factors)
+        return ResourceFactoredExperimentIterator(self._factors)
 
 
     def __len__(self):

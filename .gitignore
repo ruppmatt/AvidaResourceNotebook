@@ -5,4 +5,6 @@ default_config/avida
 default_config/data
 *.pyc
 .idea/
+*.c
+*.html
 

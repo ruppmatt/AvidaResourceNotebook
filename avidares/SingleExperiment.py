@@ -1,4 +1,3 @@
-import pyximport; pyximport.install()
 import pdb
 import pandas
 import subprocess
@@ -19,10 +18,8 @@ import pdb
 from IPython.display import HTML
 
 from .utilities import TimedSpinProgessBar, TimedProgressBar, write_temp_file,\
-    ColorMaps, TitleElapsedProgressBar
-from . import blender
+    ColorMaps, TitleElapsedProgressBar, blend
 
-import multiprocessing as mproc
 
 
 class ResourceExperimentAnimation:
@@ -31,7 +28,7 @@ class ResourceExperimentAnimation:
 
     def __init__(self, data, world_size, title='', cmap=None, use_pbar=True, interval=50,
             post_plot_fn=[], **kw):
-        self._data = data
+        self._data = data.copy()  #Let's keep our data clean
         self._resources = None
         self._is_multi = None
         self._world_size = world_size
@@ -44,8 +41,6 @@ class ResourceExperimentAnimation:
         self._last_animation = None
         self._vmin = None
         self._vmax = None
-        self._cmap_norm = None
-        self._cbar = None
         self._prepare_data()
         self._pbar =\
             TimedProgressBar(title='Building Animation', max_value=self._num_frames) if use_pbar else None
@@ -55,8 +50,6 @@ class ResourceExperimentAnimation:
             self._cmap = ColorMaps.green if cmap is None else cmap
         else:
             self._cmap = self._multi_res_cmap if cmap is None else cmap
-        self._scalar_mappable = None
-
 
     def _prepare_data(self):
         self._resources = self._data.iloc[:,1].unique()
@@ -88,16 +81,10 @@ class ResourceExperimentAnimation:
         cax = plt.subplot( gs[:,-1] )
         if not self._is_multi:
             self._cbar = mpl.colorbar.ColorbarBase(cax, cmap=self._cmap, norm=norm, orientation='vertical')
-            self._scalar_mappable = mpl.cm.ScalarMappable(cmap=self._cmap, norm=norm)
             self._cbar.set_label('Abundance')
         else:
-            cbar = mpl.colorbar.ColorbarBase(cax, cmap=ColorMaps.gray, norm=norm, orientation='vertical')
-            cbar.set_label('Abundance')
-            self._cbar = []
-            self._scalar_mappable = []
-            for rndx,res in enumerate(self._resources):
-                self._cbar.append(mpl.colorbar.ColorbarBase(cax, cmap=self._cmap[rndx], norm=norm, orientation='vertical'))
-                self._scalar_mappable.append(mpl.cm.ScalarMappable(cmap=self._cmap[rndx], norm=norm))
+            self._cbar = mpl.colorbar.ColorbarBase(cax, cmap=ColorMaps.gray, norm=norm, orientation='vertical')
+            self._cbar.set_label('Abundance')
 
         if not self._is_multi:
             ax = plt.subplot(gs[-1,0:-1])
@@ -109,18 +96,21 @@ class ResourceExperimentAnimation:
                                left='off', labelleft='off')
         ax.set_frame_on(False)
         update = ax.text(0.5,0.5,'Update n/a', ha='center')
-        plt.suptitle(self._title)
 
         if self._is_multi:
-            ax = plt.subplot(gs[-1,:])
+            ax = plt.subplot(gs[-1,:-1])
             legend_handles = []
             for ndx,res_name in enumerate(self._resources):
                 legend_handles.append(mpl.patches.Patch(color=self._colors[ndx], label=res_name))
             plt.legend(handles=legend_handles, loc='center', frameon=False, ncol=len(legend_handles))
             ax.tick_params(axis='both', bottom='off', labelbottom='off',
                                    left='off', labelleft='off')
+            ax.set_frame_on(False)
+
+        plt.suptitle(self._title)
 
         self._to_anim = {'plot':im, 'update':update}
+
 
     def get_drawables(self):
         return self._to_anim.values()
@@ -154,7 +144,9 @@ class ResourceExperimentAnimation:
             multi_res_data = None
 
             if self._setup._is_multi:
-                multi_res_colors = blender.blend(data, self._setup._resources, self._setup._scalar_mappable)
+                num_resources = len(self._setup._resources)
+                colors = list(map(lambda x: x.colors, self._setup._cmap[0:num_resources]))
+                multi_res_colors = blend(data, colors, self._setup._resources)
 
             if self._setup._pbar is not None:
                 self._setup._pbar.start()

@@ -4,10 +4,62 @@ from tempfile import NamedTemporaryFile, TemporaryFile, TemporaryDirectory
 from functools import reduce
 import multiprocessing as mproc
 import numpy as np
+import matplotlib as mpl
 import pdb
 import pickle
 import subprocess
 import os
+import pyximport; pyximport.install(setup_args={"include_dirs":np.get_include()})
+from .blender import blender
+
+
+
+def blend(data, cmaps, res_names):
+
+    res_num = {k:n for n,k in enumerate(res_names)}
+    if isinstance(data, list):
+        retval = []
+        for d in data:
+            _data = d.copy()  # Let's not muck with the original
+            for k in range(_data.shape[0]):
+                _data.iloc[k,1] = res_num[data.iloc[k,1]]
+            retval.append(blender(np.array(_data, dtype=float), np.array(cmaps, dtype=float)))
+        return retval
+    else:
+        _data = data.copy()  # Let's not muck with the original
+        for k in range(_data.shape[0]):
+            _data.iloc[k,1] = res_num[data.iloc[k,1]]
+        return blender(np.array(_data, dtype=float), np.array(cmaps, dtype=float))
+
+def cubehelix_palette(n_colors=6, start=0, rot=.4, gamma=1.0, hue=0.8,
+                      light=.85, dark=.15, reverse=False, as_cmap=False):
+    """
+        I'm going to monkey patch the original cubehelix_palette function in
+        Seaborn to make it return a matplotlib colormap with the same number of
+        colors as requested by the function definition.  In the original source
+        code, 256 values are returned.  This is too many.
+    """
+    cdict = mpl._cm.cubehelix(gamma, start, rot, hue)
+    cmap = mpl.colors.LinearSegmentedColormap("cubehelix", cdict)
+
+    x = np.linspace(light, dark, n_colors)
+    pal = cmap(x)[:, :3].tolist()
+    if reverse:
+        pal = pal[::-1]
+
+    if as_cmap:
+        x_nc = np.linspace(light, dark, n_colors)
+        if reverse:
+            x_nc = x_nc[::-1]
+        pal_nc = cmap(x_nc)
+        cmap = mpl.colors.ListedColormap(pal_nc)
+        return cmap
+    else:
+        return sb.palettes._ColorPalette(pal)
+
+# Perform monkey-patching
+sb.cubehelix_palette = cubehelix_palette
+
 
 
 def write_temp_file(contents, **kw):
@@ -17,85 +69,6 @@ def write_temp_file(contents, **kw):
     fn.close()
     return path
 
-
-class ColorBlendingSubprocs:
-
-    def __init__(self, data, resources, scalar_mappable, world_size, chunk_size=5,
-                 max_procs=10, pbar=True, cwd='avidares', venv_dir='../venv',
-                 module='pickled_blender.py'):
-        self._data = data
-        self._resources = resources
-        self._scalar_mappable = scalar_mappable
-        self._world_size = world_size
-        self._chunk_size = chunk_size
-        self._cwd = cwd
-        self._venv_dir = venv_dir
-        self._module = module
-        self._max_procs = max_procs
-        self._ndx = 0
-        self._updates = self._data.iloc[:,0].unique()
-        self._total_chunks = int(np.ceil(len(self._updates) / float(self._chunk_size)))
-        self._pbar = TimedCountProgressBar(title='Running blenders', max_value = self._total_chunks) if pbar else None
-        self._blended = {}
-        pdb.set_trace()
-
-
-    def blend(self):
-
-        if len(self._blended) > 0:
-            return self._blended
-
-        if self._pbar:
-            self._pbar.start()
-
-        active = set()
-        output = []
-        all_procs = []
-        tmp_dir = TemporaryDirectory()
-
-        for data_chunk in UpdateIterator(self._data, chunk_size=self._chunk_size):
-            with NamedTemporaryFile(dir=tmp_dir.name, delete=False) as to_pipe:
-                to_pipe.write(
-                    pickle.dumps(
-                        (data_chunk, self._resources, self._scalar_mappable, self._world_size)
-                        )
-                    )
-                infile = to_pipe.name
-
-            outfile = NamedTemporaryFile(dir=tmp_dir.name, delete=False).name
-            output.append(outfile)
-
-            cmd = f'sh -c ". {self._venv_dir}/bin/activate ; python {self._module} {infile} {outfile}"'
-            child_proc = subprocess.Popen(cmd,
-                                          cwd=self._cwd,
-                                          shell=True
-                                          )
-            active.add(child_proc)
-            all_procs.append(child_proc)
-            if len(active) >= self._max_procs:
-                self._update_pbar(all_procs)
-                os.wait()
-                active.difference_update([p for p in active if p.poll() is not None])
-
-        while len(active) > 0:
-            self._update_pbar(all_procs)
-            os.wait()
-            active.difference_update([p for p in active if p.poll() is not None])
-
-        for fn in output:
-            with open(fn) as pickled:
-                self._blended.update(pickle.loads(pickled.read()))
-                print(self._blended)
-
-        if self._pbar:
-            self._pbar.finish()
-
-        return self._blended
-
-
-    def _update_pbar(self, all_procs):
-        if self._pbar is not None:
-            self._pbar.update(sum(map(lambda x: 1 if x.returncode is not None else 0, all_procs)))
 
 
 class UpdateIterator:
