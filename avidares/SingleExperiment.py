@@ -323,7 +323,7 @@ class ResourceExperimentAnimation:
 
 
 
-    def animate(self, force=False, blit=True):
+    def animate(self, force=False, blit=True, **kw):
         """
         Setup the animation request using FuncAnimation.  Note that this method
         does *not* actually perform the animation until it is either displayed
@@ -341,7 +341,10 @@ class ResourceExperimentAnimation:
 
         # We need to create the figure before we call FuncAnimation as it is
         # a required argument.
-        self._fig = plt.figure()
+        if 'fig_conf' in kw:
+            self._fig = plt.figure(**kw['fig_conf'])
+        else:
+            self._fig = plt.figure()
 
         # We're initializing these helper classes with ourself because we want
         # all the setup information maintained.  The __call__ methods for these
@@ -459,6 +462,8 @@ class ResourceExperiment:
         An internal helper function to actually run the subprocess.
         :param args: The commandline argument to execute
         """
+
+
         # subprocess.PIPE can only hold about 64k worth of data before
         # it hangs the chid subprocess.  To get around this, we're writing
         # the standard output and standard error to this temporary file.
