@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.text import Text
 import pdb
+from collections import Iterable
 
 from IPython.display import HTML
 
@@ -23,35 +24,45 @@ from .utilities import TimedSpinProgessBar, TimedProgressBar, write_temp_file,\
 
 
 class ResourceExperimentAnimation:
+    """
+    A class to plot the resource data from a single Avida experiment using
+    a heat map.  This class is capable of plotting up to three resources.
+    """
 
+    # The colorbars should multiple resources be plotted
     _multi_res_cmap = [ColorMaps.green, ColorMaps.red, ColorMaps.blue]
 
     def __init__(self, data, world_size, title='', cmap=None, use_pbar=True, interval=50,
-            post_plot_fn=[], **kw):
+            post_plot=[], **kw):
         self._data = data.copy()  #Let's keep our data clean
-        self._resources = None
-        self._is_multi = None
-        self._world_size = world_size
-        self._cmap = ColorMaps.green if cmap is None else cmap
-        self._colors = ['green', 'red', 'blue']
-        self._num_frames = None
-        self._interval = interval
-        self._post_plot_fn = []
-        self._fig = None
-        self._last_animation = None
-        self._vmin = None
-        self._vmax = None
-        self._prepare_data()
+        self._resources = None    #Name of resources
+        self._is_multi = None     #Are we plotting multiple resources?
+        self._world_size = world_size   #The size of the Avida world
+        self._cmap = ColorMaps.green if cmap is None else cmap  #What colormap(s) are we using?
+        self._colors = ['green', 'red', 'blue']  #If multi, how should the legend patches be colored
+        self._num_frames = None   #How many frames are we drawing?
+        self._interval = interval  #How fast should the animation go?
+        self._to_draw = None    #With blitting, what artists do we need to draw?
+        self._post_plot = post_plot     #After the axes is drawn, what else should we draw on it?
+        self._fig = None        #A handle to our figure
+        self._last_anim = None     # A cached copy of the last animation rendered; force=True in animat() will replace it.
+        self._vmin = None   # Maximum value in our dataset
+        self._vmax = None   # Minimum value in our dataset
+        self._prepare_data()    # Now let's prepare our data
         self._pbar =\
             TimedProgressBar(title='Building Animation', max_value=self._num_frames) if use_pbar else None
-        self._last_anim = None
-        self._title = title
-        if not self._is_multi:
+        self._title = title  # The title of the plot
+        if not self._is_multi:  #Handle our colormaps
             self._cmap = ColorMaps.green if cmap is None else cmap
         else:
             self._cmap = self._multi_res_cmap if cmap is None else cmap
 
     def _prepare_data(self):
+        """
+        Internal function to setup our animation.  We gather data about the
+        number of resources, how many frames we're going to draw, and what our
+        min and max values are
+        """
         self._resources = self._data.iloc[:,1].unique()
         self._is_multi = True if len(self._resources) > 1 else False
         self._data = self._data
@@ -63,11 +74,19 @@ class ResourceExperimentAnimation:
 
 
     def setup_figure(self):
+        """
+        A helper class for our init_func used during the animation process.
+        This class sets up all objects that will be animated assuming blitting
+        is enabled.  (Blitting speeds up animation *considerably*.)
+        """
+
+        # Create our layout; GridSpec helps considerably with layout
         if not self._is_multi:
             gs = mpl.gridspec.GridSpec(2, 2, width_ratios=[1, 0.1], height_ratios=[1, 0.1])
         else:
             gs = mpl.gridspec.GridSpec(3, 2, width_ratios=[1, 0.1], height_ratios=[1, 0.1, 0.1])
 
+        # Plot our empty heatmap
         ax = plt.subplot(gs[0,0])
         z = np.zeros(self._world_size)
         base_cmap = self._cmap if not self._is_multi else ColorMaps.gray
@@ -76,16 +95,28 @@ class ResourceExperimentAnimation:
                 vmin=self._vmin, vmax=self._vmax)
         ax.tick_params(axis='both', bottom='off', labelbottom='off',
                                left='off', labelleft='off')
+
+        # Plot any artists that should be drawn after the heatmap is drawn
+        # These should be instances of class BlitArtist (in utilities.py)
+        pp_objs = []
+        for pp in self._post_plot:
+            pp_objs.append(pp.blit_build(ax))
+
+        # Create the colorbar for our figure
         norm = mpl.colors.Normalize(self._vmin, self._vmax)
         self._cmap_norm = norm
         cax = plt.subplot( gs[:,-1] )
         if not self._is_multi:
+            # If it is a single resource, use the cmap for the colorbar
             self._cbar = mpl.colorbar.ColorbarBase(cax, cmap=self._cmap, norm=norm, orientation='vertical')
             self._cbar.set_label('Abundance')
         else:
+            # If we have multiple resources, make it a gray colorbar
             self._cbar = mpl.colorbar.ColorbarBase(cax, cmap=ColorMaps.gray, norm=norm, orientation='vertical')
             self._cbar.set_label('Abundance')
 
+        # Because only artists within axes are redrawn during blitting, the
+        # update text needs its own axes.
         if not self._is_multi:
             ax = plt.subplot(gs[-1,0:-1])
         else:
@@ -97,6 +128,8 @@ class ResourceExperimentAnimation:
         ax.set_frame_on(False)
         update = ax.text(0.5,0.5,'Update n/a', ha='center')
 
+        # If we're plotting multiple resources, add a legend at the bottom of
+        # the figure
         if self._is_multi:
             ax = plt.subplot(gs[-1,:-1])
             legend_handles = []
@@ -109,48 +142,132 @@ class ResourceExperimentAnimation:
 
         plt.suptitle(self._title)
 
-        self._to_anim = {'plot':im, 'update':update}
+        # Store what we need to redraw each frame for blitting.
+        # The values in this dictionary may be either a single element
+        # or an iterable.
+        self._to_draw = {'plot':im, 'update':update, 'post_plot':pp_objs}
 
 
     def get_drawables(self):
-        return self._to_anim.values()
+        """
+        A helper function to get all artist objects that should be redrawn
+        each frame during blitting.  Any values that are iterables in the
+        dictionary are flattened into the list that is returned.
+
+        :return: List of artist to be drawn each frame
+        """
+        to_draw = []
+        for k,v in self._to_draw.items():
+            if isinstance(v,Iterable):
+                for i in v:
+                    to_draw.append(i)
+            else:
+                to_draw.append(v)
+        return to_draw
+
+
+    def __getitem__(self, key):
+        """
+        A helper utility to return the artists associated with a particular
+        key in the _to_draw dictionary.
+
+        :param: Name of artist to return
+
+        :return: An artist
+        """
+        return self._to_draw[key]
 
 
     def post_axis(self, update, fnumber):
-        for post_fn in self._post_plot_fn:
-            if isinstance(post_fn, types.GeneratorType):
-                post_fn.send(self, update, fnumber)
-            else:
-                post_fn(self, update, fnumber)
+        """
+        After plotting, additional artists may need updating.  This method
+        calls blit_update on those artists, which should be instances of
+        BlitArtist.
+        """
+        for bp in self['post_plot']:
+            bp.blit_update(update, fnumber)
+
+
+    # ===========================================
+    # What follows are the three classes that are needed to create animation
+    # plot with blitting: InitFrame, which sets up the figure before the
+    # first frame is drawn.  This is important for blitting.  GenerateFrameData,
+    # which is used to inform the frame drawer about any information it needs
+    # to draw the frame.  Finally, DrawFrame, which actually does the drawing.
+    #
+    # I made these classes because I wanted to pass common information from
+    # the ResourceExperimentAnimation class to them, and I needed a way to
+    # keep within the signature restrictions placed on them as components of the
+    # core animation function, FuncAnimation.
+    # ===========================================
+
 
     class InitFrame:
+        """
+        Before the first frame is drawn, setup the figure.  For blitting,
+        all objects that change over the course of the animation need to be
+        created and returned.
+        """
 
         def __init__(self, setup):
+            """
+            Initialize InitFrame
+
+            :param setup: An instance of ResourceExperimentAnimation
+            """
             self._setup = setup
             self._setup.setup_figure()
 
         def __call__(self):
+            """
+            This is what FuncAnimation's init_func calls.
+
+            :return: Artists that are to be drawn each frame.
+            """
             return self._setup.get_drawables()
 
+
     class GenerateFrameData:
+        """
+        A generator that yields information necessary for each frame.  It
+        serves as the argument for FuncAnimation's frames parameter.
+
+        Note that the number of times this iterator is called depends on
+        the value of FuncAnimation's save_count.
+        """
+
         def __init__(self, setup):
+            """
+            :param setup:  An instance of ResourceExperimentAnimation
+            """
             self._setup = setup
 
         def __call__(self):
+            """
+            The generator function itself.  It returns the data needed to
+            alter the artists in each frame of the animation
+
+            :return: A tuple of objects needed by the animation method.  In
+                     This case, that's DrawFrame's __call__ method's first
+                     positional parameter.
+            """
             ndx = 0
             data = self._setup._data
             world_size = self._setup._world_size
             updates = data.iloc[:,0].unique()
             multi_res_data = None
 
+            # If we have multiple resources, we need to blend the colors.
             if self._setup._is_multi:
                 num_resources = len(self._setup._resources)
                 colors = list(map(lambda x: x.colors, self._setup._cmap[0:num_resources]))
                 multi_res_colors = blend(data, colors, self._setup._resources)
 
+            # Start the progress bar
             if self._setup._pbar is not None:
                 self._setup._pbar.start()
 
+            # Generate frame data for each update and yield it
             for ndx,update in enumerate(updates):
                 if not self._setup._is_multi:
                     yield ndx,\
@@ -163,36 +280,86 @@ class ResourceExperimentAnimation:
 
 
     class DrawFrame:
+        """
+        This is the class that actually draws each frame.  It is the first
+        required parameter of FuncAnimation.  This class's __call__ signature
+        matches the requirements established by FuncAnimation.
+        """
 
         def __init__(self, setup):
+            """
+            :param setup: An instance of ResourceExperimentAnimation
+            """
             self._setup = setup
 
         def __call__(self, info, *fargs):
+            """
+            This is the method that alters the figure for each frame.
+
+            :param info: A tuple from the frame generator (DataFrameGenerator, here)
+            :param fargs: A list of arguments passed via FuncAnimation's fargs parameter
+
+            :return: An iterable of artists to draw
+            """
             ndx, update, data = info  # From our generator
             title = self._setup._title # The title of the plot
             cmap = self._setup._cmap # The colormap for the plot
 
-            self._setup._to_anim['plot'].set_array(data)
-            self._setup._to_anim['update'].set_text(f'Update {update}')
+            # Update our figure's objects
+            self._setup['plot'].set_array(data)
+            self._setup['update'].set_text(f'Update {update}')
 
+            # Do any post-drawing updates we've requested
             self._setup.post_axis(update, ndx)
 
+            # Update the progress bar
             if self._setup._pbar:
                 self._setup._pbar.update(ndx)
                 if ndx == self._setup._num_frames - 1:
                     self._setup._pbar.finish()
 
+            # Return the artists that need to be drawn
             return self._setup.get_drawables()
 
 
-    def animate(self, force=False, blit=True):
 
+    def animate(self, force=False, blit=True):
+        """
+        Setup the animation request using FuncAnimation.  Note that this method
+        does *not* actually perform the animation until it is either displayed
+        (by to_html5_video or the like) or saved.  Until then a handle to the
+        what is returned by FuncAnimation must be held otherwise the garbage
+        collector will eat it.
+
+        :param force: Do not use a cached copy of the animation object
+        :param blit: Should we use blitting to speed animation *considerably*?
+
+        :return: A handle to the animation
+        """
         if self._last_anim is not None and force == False:
             return self._last_anim
+
+        # We need to create the figure before we call FuncAnimation as it is
+        # a required argument.
         self._fig = plt.figure()
+
+        # We're initializing these helper classes with ourself because we want
+        # all the setup information maintained.  The __call__ methods for these
+        # nested classes match the signature expected by FuncAnimation for their
+        # various purposes
+
+        # Helper that initializes the figure before the first frame is drawn
         init_frame = ResourceExperimentAnimation.InitFrame(self)
+
+        # Helper that generates the data that is used to adjust each frame
         data_gen = ResourceExperimentAnimation.GenerateFrameData(self)
+
+        # Helper that updates the contents of the figure for each frame
         draw_frame = ResourceExperimentAnimation.DrawFrame(self)
+
+        # The actual animation creation call itself.  A handle to the return
+        # value must be kept until the animation is rendered or the garbage
+        # collector wille eat it
         anim = animation.FuncAnimation(self._fig, draw_frame, init_func=init_frame,
                                        frames=data_gen,
                                        fargs=[],
@@ -200,26 +367,36 @@ class ResourceExperimentAnimation:
                                        save_count=self._num_frames,
                                        blit=blit
                                        )
-        self._last_anim = anim
-        self._fig.show(False)
+        self._last_anim = anim  # Cache our last animation
+        self._fig.show(False)   # Try to hide the figure; it probably won't
         return anim
 
 
 
 
-
-
-
 class ResourceExperiment:
+    """
+    ResourceExperiment performs an Avida experiment and loads the resource output file as a Pandas DataFrame.
+    """
+
+
 
     default_args = '-s -1'
-    default_events = '\
+    default_events ='\
     u begin Inject default-heads.org\n\
     u 0:100:end PrintSpatialResources resources.dat\n\
     u 25000 exit\n'
 
 
     def __init__(self, environment, world_size, cwd='default_config', args=None, events=None, use_pbar=True):
+        """
+            :param environment:  A string representation of the environment file.  Required.
+            :param world_size:   A tuple of the (X,Y) size of the world.  Required.
+            :param cwd:  The working directory to execute Avida.  Optional.
+            :param args:  Arguments to pass to Avida aside from world size and location of input/output files.  Optional.
+            :param evnets: The contents of the events file.  If not provided, a default is used. Optional
+            :param use_pbar: Show the progress bar
+        """
         self._cwd = cwd
         self._world_size = world_size
         self._args = args if args is not None else self.default_args
@@ -230,9 +407,11 @@ class ResourceExperiment:
 
 
     def run_experiment(self):
-        # Add our world size.  We're requiring it because the plotting
-        # function needs to know it in order to properly shape the
-        # heatmap
+        """
+        Actually run the experiment and load the results.
+
+        :return: self for the purpose of chaining
+        """
         args = self._args
         args += f' -set WORLD_X {self._world_size[0]} -set WORLD_Y {self._world_size[1]}'
 
@@ -257,15 +436,29 @@ class ResourceExperiment:
 
 
 
-    def animate(self, data_transform=None, **kw):
+    def animate(self, data_transform=None, figkw={}, animkw={}):
+        """
+        A helper method to animate using ResourceExperimentAnimation.
+
+        :param data_transform: A function to transform our Pandas DataFrame
+        :param figkw: KW arguments to pass to the animation object's initializer
+        :param animkw: KW arguments to pass to the animation object's animation method
+
+        :return: the animation object.  Not this has to be converted to html5_video
+                 or saved before the rendering will actually occur.
+        """
         # Generate our data
         if data_transform is not None:  # Transform the data if requested
             self._data = data_transform(self._data)
 
-        return ResourceExperimentAnimation(self._data, world_size=self._world_size, **kw).animate(**kw)
+        return ResourceExperimentAnimation(self._data, world_size=self._world_size, **figkw).animate(**animkw)
 
 
     def _run_process(self, args):
+        """
+        An internal helper function to actually run the subprocess.
+        :param args: The commandline argument to execute
+        """
         # subprocess.PIPE can only hold about 64k worth of data before
         # it hangs the chid subprocess.  To get around this, we're writing
         # the standard output and standard error to this temporary file.

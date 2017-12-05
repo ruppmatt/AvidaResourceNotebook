@@ -14,22 +14,41 @@ from .blender import blender
 
 
 
-def blend(data, cmaps, res_names):
 
+
+def blend(data, cmaps, res_names):
+    """
+    Call out to our blender to blend the colors in multi-resource experiments.
+
+    :param data: either a Pandas DataFrame or list of them
+    :param cmaps: the color maps we're associating with each resource abundance
+    :param res_names: the names of the resources
+
+    :return: A numpy floating point array Updates x Num_Cells x 3 (RGB) or a
+             list of them.
+    """
+
+    # Our blender will only take floating points values to improve
+    # efficiency.  So, we have to convert each res_name to a floating point.
     res_num = {k:n for n,k in enumerate(res_names)}
-    if isinstance(data, list):
+
+
+    if isinstance(data, list):  #If we're dealing with a list
         retval = []
         for d in data:
             _data = d.copy()  # Let's not muck with the original
             for k in range(_data.shape[0]):
-                _data.iloc[k,1] = res_num[data.iloc[k,1]]
+                _data.iloc[k,1] = res_num[data.iloc[k,1]]  # Convert resource names to numbers
             retval.append(blender(np.array(_data, dtype=float), np.array(cmaps, dtype=float)))
         return retval
-    else:
+    else:  # If we're dealing with a single data frame
         _data = data.copy()  # Let's not muck with the original
         for k in range(_data.shape[0]):
-            _data.iloc[k,1] = res_num[data.iloc[k,1]]
+            _data.iloc[k,1] = res_num[data.iloc[k,1]] # Convert resource names to numbers
         return blender(np.array(_data, dtype=float), np.array(cmaps, dtype=float))
+
+
+
 
 def cubehelix_palette(n_colors=6, start=0, rot=.4, gamma=1.0, hue=0.8,
                       light=.85, dark=.15, reverse=False, as_cmap=False):
@@ -63,6 +82,16 @@ sb.cubehelix_palette = cubehelix_palette
 
 
 def write_temp_file(contents, **kw):
+    """
+    Write contents to a temporary file that is *not* deleted when the
+    handle to the file is lost.  I use a TemporaryDirectory to hold these
+    files so they do eventually get cleaned up in this code.  The OS will also
+    clean them up on a restart.
+
+    :param contents: what to write to the temporary file
+
+    :return: the path to the temporary file.
+    """
     fn = NamedTemporaryFile(mode='w', delete=False, **kw)
     fn.write(contents)
     path = fn.name
@@ -72,8 +101,18 @@ def write_temp_file(contents, **kw):
 
 
 class UpdateIterator:
+    """
+    Because each update might have mutliple resources associated with it, we
+    sometime want to iterate through our data either one or multiple updates
+    at a time.  This iterator provides that functionality for our expected
+    Pandas DataFrame.
+    """
 
     def __init__(self, data, chunk_size=1):
+        """
+        :param data: the Pandas DataFrame containing our resource data
+        :param chunk: the number of updates to return per iteration
+        """
         self._data = data
         self._chunk_size = chunk_size
 
@@ -97,6 +136,9 @@ class UpdateIterator:
 
 
 class ColorMaps:
+    """
+    Just a class to store some common colormaps
+    """
     green = sb.cubehelix_palette(
         start=2, rot=0, hue=1, dark=0.10, light=1.0, gamma=1, n_colors=16,
         as_cmap=True)
@@ -114,7 +156,10 @@ class ColorMaps:
 
 
 class TimedProgressBar(progressbar.ProgressBar):
-
+    """
+    A progress bar that fills as progress is made, displays a percentage
+    completed, estimated time remaining, and time done when finished.
+    """
     def __init__(self, title='', **kw):
 
         self._pbar_widgets = [\
@@ -135,7 +180,10 @@ class TimedProgressBar(progressbar.ProgressBar):
 
 
 class TimedCountProgressBar(progressbar.ProgressBar):
-
+    """
+    A progressbar that tells how many of the total objects are done,
+    the estimated time remaining, and the total elapsed time when finished.
+    """
     def __init__(self, title='', **kw):
         self._pbar_widgets = [
             title,
@@ -155,7 +203,10 @@ class TimedCountProgressBar(progressbar.ProgressBar):
 
 
 class TimedSpinProgessBar(progressbar.ProgressBar):
-
+    """
+    A progressbar that has a spinner and tells us the elapsed time when it is
+    finished.
+    """
     def __init__(self, title='', **kw):
         self._pbar_widgets = [
                         title,
@@ -172,12 +223,19 @@ class TimedSpinProgessBar(progressbar.ProgressBar):
                             format='')]
         progressbar.ProgressBar.__init__(self, widgets=self._pbar_widgets, **kw)
 
+
     def finish(self,code):
+        """
+        Cleanup upon finishing
+        """
         self._pbar_widgets[2] = ' ' # Delete the spinny wheel
         self._pbar_widgets[4] = self._finished_widget(code)
         progressbar.ProgressBar.finish(self)
 
     def _finished_widget(self, code):
+        """
+        Just a helper function to say our our progress went.
+        """
         if code == 0:
             return progressbar.FormatLabel('[OK]')
         else:
@@ -185,6 +243,10 @@ class TimedSpinProgessBar(progressbar.ProgressBar):
 
 
 class TitleElapsedProgressBar(progressbar.ProgressBar):
+    """
+    A progress bar that just tells us how long time has elasped upon
+    completion.
+    """
     def __init__(self, title='', **kw):
         self._pbar_widgets = [
             title,

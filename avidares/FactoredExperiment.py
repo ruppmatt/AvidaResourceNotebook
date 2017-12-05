@@ -18,11 +18,16 @@ from .utilities import ColorMaps, TimedProgressBar, TimedCountProgressBar, blend
 
 
 class ResourceFactoredExperimentAnimation:
+    """
+    Draw an experiment that has multiple factors.  We're limited to two dimensions, but
+    not particularly by the number of factors in each of those two dmensions
+    """
 
     _multi_res_cmap = [ColorMaps.green, ColorMaps.red, ColorMaps.blue]
 
     def __init__(self, experiment, interval=50, cmap=None, post_axis_fn=None,
         post_frame_fn=None, use_pbar=True, title=None, **kw):
+
         self._experiment = experiment
 
         self._dims = experiment.get_dims()
