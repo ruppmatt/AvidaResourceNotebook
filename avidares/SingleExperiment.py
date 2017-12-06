@@ -33,7 +33,7 @@ class ResourceExperimentAnimation:
     _multi_res_cmap = [ColorMaps.green, ColorMaps.red, ColorMaps.blue]
 
     def __init__(self, data, world_size, title='', cmap=None, use_pbar=True, interval=50,
-            post_plot=[], **kw):
+            post_plot=[], env_string='', event_string='', **kw):
         self._data = data.copy()  #Let's keep our data clean
         self._resources = None    #Name of resources
         self._is_multi = None     #Are we plotting multiple resources?
@@ -52,6 +52,8 @@ class ResourceExperimentAnimation:
         self._pbar =\
             TimedProgressBar(title='Building Animation', max_value=self._num_frames) if use_pbar else None
         self._title = title  # The title of the plot
+        self._env_string = env_string
+        self._event_string = event_string
         if not self._is_multi:  #Handle our colormaps
             self._cmap = ColorMaps.green if cmap is None else cmap
         else:
@@ -81,10 +83,12 @@ class ResourceExperimentAnimation:
         """
 
         # Create our layout; GridSpec helps considerably with layout
+        # If more height is needed for the description of the figure,alter
+        # the last value of the height ratios.
         if not self._is_multi:
-            gs = mpl.gridspec.GridSpec(2, 2, width_ratios=[1, 0.1], height_ratios=[1, 0.1])
+            gs = mpl.gridspec.GridSpec(3, 2, width_ratios=[1, 0.1], height_ratios=[1, 0.1, 0.36])
         else:
-            gs = mpl.gridspec.GridSpec(3, 2, width_ratios=[1, 0.1], height_ratios=[1, 0.1, 0.1])
+            gs = mpl.gridspec.GridSpec(4, 2, width_ratios=[1, 0.1], height_ratios=[1, 0.1, 0.1, 0.36])
 
         # Plot our empty heatmap
         ax = plt.subplot(gs[0,0])
@@ -105,7 +109,7 @@ class ResourceExperimentAnimation:
         # Create the colorbar for our figure
         norm = mpl.colors.Normalize(self._vmin, self._vmax)
         self._cmap_norm = norm
-        cax = plt.subplot( gs[:,-1] )
+        cax = plt.subplot( gs[:-1,-1] )
         if not self._is_multi:
             # If it is a single resource, use the cmap for the colorbar
             self._cbar = mpl.colorbar.ColorbarBase(cax, cmap=self._cmap, norm=norm, orientation='vertical')
@@ -118,9 +122,9 @@ class ResourceExperimentAnimation:
         # Because only artists within axes are redrawn during blitting, the
         # update text needs its own axes.
         if not self._is_multi:
-            ax = plt.subplot(gs[-1,0:-1])
-        else:
             ax = plt.subplot(gs[-2,0:-1])
+        else:
+            ax = plt.subplot(gs[-3,0:-1])
         ax.set_ylim(0,1)
         ax.set_xlim(0,1)
         ax.tick_params(axis='both', bottom='off', labelbottom='off',
@@ -131,7 +135,7 @@ class ResourceExperimentAnimation:
         # If we're plotting multiple resources, add a legend at the bottom of
         # the figure
         if self._is_multi:
-            ax = plt.subplot(gs[-1,:-1])
+            ax = plt.subplot(gs[-2,:-1])
             legend_handles = []
             for ndx,res_name in enumerate(self._resources):
                 legend_handles.append(mpl.patches.Patch(color=self._colors[ndx], label=res_name))
@@ -140,7 +144,17 @@ class ResourceExperimentAnimation:
                                    left='off', labelleft='off')
             ax.set_frame_on(False)
 
+        # Label with environment and event strings
+        # Environment string
+        ax = plt.subplot(gs[-1,:])
+        desc = self._env_string + '\n\n' + self._event_string + '\n\n' + f'World: {self._world_size[0]} x {self._world_size[1]}'
+        env = ax.text(0.05, 1, desc, ha='left', va='top', fontsize=7)
+        ax.tick_params(axis='both', bottom='off', labelbottom='off',
+                               left='off', labelleft='off')
+        ax.set_frame_on(False)
         plt.suptitle(self._title)
+
+
 
         # Store what we need to redraw each frame for blitting.
         # The values in this dictionary may be either a single element
