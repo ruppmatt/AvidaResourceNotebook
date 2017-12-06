@@ -1,7 +1,7 @@
 import numpy as np
 cimport numpy as np
 cimport cython
-
+import pdb
 
 DTYPE = np.float
 ctypedef np.float_t DTYPE_t
@@ -11,7 +11,8 @@ ctypedef np.float_t DTYPE_t
 cpdef np.ndarray blender(np.ndarray[DTYPE_t, ndim=2] data, np.ndarray[DTYPE_t, ndim=3] lscmap):
 
   #Some indexers
-  cdef int i,j,k,r,c,_,__, cell, color, cmap_level
+  cdef int i,j,k,r,c,_,__, cell, color_ndx, cmap_level
+  cdef float this_color, sum_color
   cdef int ud_start, ud_end
   cdef int res_id, res_ndx
   cdef int ud_curr
@@ -59,7 +60,7 @@ cpdef np.ndarray blender(np.ndarray[DTYPE_t, ndim=2] data, np.ndarray[DTYPE_t, n
   # This will be our blended output with update in the first dimension,
   # cell array in the second dimension, and rgb in the third.
   # I'm not doing alpha blending.
-  cdef np.ndarray[DTYPE_t, ndim=3] u_rgb = np.zeros([num_updates, num_cells, 3], dtype=DTYPE)
+  cdef np.ndarray[DTYPE_t, ndim=3] u_rgb = np.ones([num_updates, num_cells, 3], dtype=DTYPE)
 
   # Iterate through our data.  I'm assuming the data is sorted by update
   # already.
@@ -80,8 +81,10 @@ cpdef np.ndarray blender(np.ndarray[DTYPE_t, ndim=2] data, np.ndarray[DTYPE_t, n
         for r in range(ud_start, ud_end):
           res_id = <int>data[r,col_res]
           cmap_level = <int>(data[r,cell+col_cells] * num_levels)
-          for color in range(3):
-            u_rgb[ndx_u,cell,color] += scale*lscmap[res_id,cmap_level,color]
+          for color_ndx in range(3):
+            this_color = lscmap[res_id,cmap_level,color_ndx]
+            sum_color = u_rgb[ndx_u,cell,color_ndx]
+            u_rgb[ndx_u,cell,color_ndx] = min(this_color, sum_color)
 
     ndx_u += 1
 

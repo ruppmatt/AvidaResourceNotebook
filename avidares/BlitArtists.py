@@ -7,10 +7,13 @@ class BlitArtist:
     we can "blit" and a method to update it over the course of animation.
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, bdata, **kw):
+        self._bdata = bdata
+        self._artist_kw = kw
+        self._ax_ndx = None
+        self._build_kw = {}
 
-    def blit_build(self, ax, **kw):
+    def blit_build(self, ax, ax_ndx=None, **kw):
         raise NotImplementedError('build must be implemented for a BlitPatch')
 
     def blit_update(self, frame, update, ax_ndx=None, **kw):
@@ -34,14 +37,14 @@ class BRectangle(mpl.patches.Rectangle, BlitArtist):
         :param data: any additional data we'd like to keep around (e.g. for udpating)
         :param imshow: if true, adjust the rectangle to land on a heatmap boundary
         """
+        BlitArtist.__init__(self, bdata, **kw)
         offset = 0 if not imshow else 0.5
         self._xy = xy[0]-offset, xy[1]-offset
         self._width = width
         self._height = height
-        self._bdata = bdata
-        self._kw = kw
 
-    def blit_build(self, ax, **kw):
+
+    def blit_build(self, ax, ax_ndx=None, **kw):
         """
         Actually build the patch and add it to the axes.  This method gets called
         via the init_func in FuncAnimation.
@@ -50,8 +53,10 @@ class BRectangle(mpl.patches.Rectangle, BlitArtist):
 
         :return: ourself, since we're actually an artist
         """
-        mpl.patches.Rectangle.__init__(self, self._xy, self._width, self._height, **self._kw)
+        mpl.patches.Rectangle.__init__(self, self._xy, self._width, self._height, **self._artist_kw)
         ax.add_patch(self)
+        self._ax_ndx = ax_ndx
+        self._build_kw == kw
         return self
 
     def blit_update(self, frame, update, ax_ndx=None, **kw):
@@ -65,4 +70,22 @@ class BRectangle(mpl.patches.Rectangle, BlitArtist):
 
         :return: none
         """
+        pass
+
+
+class BCircle(mpl.patches.Circle, BlitArtist):
+    def __init__(self, xy, radius, bdata={}, imshow=True, **kw):
+        BlitArtist.__init__(self, bdata, **kw)
+        offset = 0 if not imshow else 0.5
+        self._xy = xy[0]-offset, xy[1]-offset
+        self._radius = radius
+
+    def blit_build(self, ax, ax_ndx=None, **kw):
+        mpl.patches.Circle.__init__(self, self._xy, self._radius, **self._artist_kw)
+        ax.add_patch(self)
+        self._ax_ndx = ax_ndx
+        self._build_data == kw
+        return self
+
+    def blit_update(self, frame, update, ax_ndx=None, **kw):
         pass

@@ -9,10 +9,11 @@ import pdb
 import pickle
 import subprocess
 import os
-import pyximport; pyximport.install(setup_args={"include_dirs":np.get_include()})
+import pyximport; pyximport.install(
+    setup_args={
+        'include_dirs':np.get_include()
+        })
 from .blender import blender
-
-
 
 
 

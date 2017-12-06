@@ -25,8 +25,8 @@ class ResourceFactoredExperimentAnimation:
 
     _multi_res_cmap = [ColorMaps.green, ColorMaps.red, ColorMaps.blue]
 
-    def __init__(self, experiment, interval=50, cmap=None, post_axis_fn=None,
-        post_frame_fn=None, use_pbar=True, title=None, **kw):
+    def __init__(self, experiment, interval=50, cmap=None, post_axis=[],
+        use_pbar=True, title=None, **kw):
 
         self._experiment = experiment
 
@@ -34,8 +34,7 @@ class ResourceFactoredExperimentAnimation:
         self._world_size = experiment.get_world_size()
         self._interval = interval
         self._factors = None
-        self._post_axis_fn = post_axis_fn
-        self._post_frame_fn = post_frame_fn
+        self._post_axis = post_axis
         self._vmin = None
         self._vmax = None
         self._num_frames = None
@@ -148,7 +147,11 @@ class ResourceFactoredExperimentAnimation:
                 if self._is_bottom_edge(ndx):
                     ax.set_xlabel(self._fact2label(ndx,0))
                 plots.append(plot)
+                pa = []
+                for pp in self._post_axix:
+                    pa.append(pp.blit_build(ax, ax_ndx=ndx))
                 ndx = ndx+1
+
         norm = mpl.colors.Normalize(self._vmin, self._vmax)
         cax = plt.subplot( gs[:,-1] )
         if not self._is_multi:
@@ -180,7 +183,7 @@ class ResourceFactoredExperimentAnimation:
 
         plt.suptitle(self._title)
 
-        self._to_draw = {'plots':plots, 'update':update}
+        self._to_draw = {'plots':plots, 'update':update, 'post_plot':pa}
 
 
     def __getitem__(self, key):
@@ -241,8 +244,8 @@ class ResourceFactoredExperimentAnimation:
             self._setup['update'].set_text(f'Update {update}')
             for ndx,data in enumerate(grid_data):
                 self._setup['plots'][ndx].set_array(data)
-                self._setup.post_axis(ndx, frame, update)
-            post_frame_artists = self._setup.post_frame(frame, update)
+                for pp in self._setup['post_plot']:
+                    pp.blit_update(frame, update, ax_ndx=ndx)
             self._setup.update_pbar(frame)
             return self._setup.get_drawables()
 
@@ -473,10 +476,10 @@ class ResourceFactoredExperiment:
         return self._data
 
 
-    def animate(self, data_transform=None, blit=True, force=False, **kw):
+    def animate(self, data_transform=None, figkw={}, animkw={}):
         if data_transform is not None:  # Transform the data if requested
             self._data = data_transform(self._data)
-        return ResourceFactoredExperimentAnimation(self, **kw).animate(force, blit)
+        return ResourceFactoredExperimentAnimation(self, **figkw).animate(**animkw)
 
 
 
