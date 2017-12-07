@@ -26,7 +26,7 @@ class BRectangle(mpl.patches.Rectangle, BlitArtist):
     A BlitArtist version of the Rectangle Patch
     """
 
-    def __init__(self, xy, width, height, bdata={}, imshow=True, **kw):
+    def __init__(self, xy, width, height, bdata=None, imshow=True, **kw):
         """
         The initialize function matches that of patches.Rectangle with the
         exception of imshow, which is used to adjust offsets in heatmaps.
@@ -74,7 +74,10 @@ class BRectangle(mpl.patches.Rectangle, BlitArtist):
 
 
 class BCircle(mpl.patches.Circle, BlitArtist):
-    def __init__(self, xy, radius, bdata={}, imshow=True, **kw):
+    """
+        A circular blit artist.
+    """
+    def __init__(self, xy, radius, bdata=None, imshow=True, **kw):
         BlitArtist.__init__(self, bdata, **kw)
         offset = 0 if not imshow else 0.5
         self._xy = xy[0]-offset, xy[1]-offset
@@ -91,8 +94,26 @@ class BCircle(mpl.patches.Circle, BlitArtist):
         pass
 
 
+class BAnnotation(mpl.text.Annotation, BlitArtist):
+    """
+    An annotation blit artist
+    """
+    def __init__(self, bdata=None, **kw):
+        BlitArtist.__init__(self, bdata, **kw)
+
+    def blit_build(self, ax, ax_ndx=None, **kw):
+        mpl.text.Annotation.__init__(self, **self._artist_kw)
+        ax.add_artist(self)
+        return self
+
+
+
 class BCellHighlighter(mpl.collections.PatchCollection, BlitArtist):
-    def __init__(self, gridshape, bdata={}, imshow=True, **kw):
+    """
+    A class that overlays a cell grid on top of the axes.  The update
+    method can be implmented to highlight particular cells.
+    """
+    def __init__(self, gridshape, bdata=None, imshow=True, **kw):
         BlitArtist.__init__(self, bdata, **kw)
         self._imshow = imshow
 
