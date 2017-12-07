@@ -324,7 +324,7 @@ class ResourceExperimentAnimation:
             self._setup['update'].set_text(f'Update {update}')
 
             # Do any post-drawing updates we've requested
-            self._setup.post_axis(update, ndx)
+            self._setup.post_axis(ndx, update)
 
             # Update the progress bar
             if self._setup._pbar:

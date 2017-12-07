@@ -89,3 +89,27 @@ class BCircle(mpl.patches.Circle, BlitArtist):
 
     def blit_update(self, frame, update, ax_ndx=None, **kw):
         pass
+
+
+class BCellHighlighter(mpl.collections.PatchCollection, BlitArtist):
+    def __init__(self, gridshape, bdata={}, imshow=True, **kw):
+        BlitArtist.__init__(self, bdata, **kw)
+        self._imshow = imshow
+
+        self._gridshape = gridshape
+
+    def blit_build(self, ax, ax_ndx=None, **kw):
+        x,y=self._gridshape
+        patches = []
+        for r in range(y):
+            for c in range(x):
+                offset = 0 if not self._imshow else 0.5
+                xx = r-offset
+                yy = c-offset
+                patch = mpl.patches.Rectangle((xx,yy), width=1, height=1, **self._artist_kw)
+                patches.append(patch)
+        mpl.collections.PatchCollection.__init__(self, patches)
+        ax.add_collection(self)
+        self.set_edgecolors('none')
+        self.set_facecolors('none')
+        return self
