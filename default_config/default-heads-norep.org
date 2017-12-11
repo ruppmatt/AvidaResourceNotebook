@@ -97,7 +97,7 @@ h-copy     # Do the copy
 if-label   # If we're done copying....
 nop-C      #
 nop-A      #
-h-divide   #    ...divide!
+nop-X      #    ...divide!
 mov-head   # Otherwise, loop back to the beginning of the copy loop.
 nop-A      # End label.
 nop-B      #

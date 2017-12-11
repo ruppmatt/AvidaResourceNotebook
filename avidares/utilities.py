@@ -9,13 +9,35 @@ import pdb
 import pickle
 import subprocess
 import os
-#import pyximport; pyximport.install(
-#    setup_args={
-#        'include_dirs':np.get_include()
-#        })
-#from .blender import blender
+import pyximport; pyximport.install(
+    setup_args={
+        'include_dirs':np.get_include()
+        })
+from .blender import blender
 
 
+
+def check_mask(data, mask):
+    """
+    Because of an issue with imshow and fully masked data,
+    we're going to apply this work-around that will give us
+    a white image if there is no data to display.
+
+    Otherwise, given data, return a masked dataset, broadcasting to
+    the color dimensions if needed
+    """
+    if mask.count() == 0:
+        ws = data.shape
+        empty = np.matlib.repmat(np.ones(3), ws[0], ws[1])
+        return empty.reshape(ws[0], ws[1], -1)
+    else:
+        if data.ndim == 3:
+            _mask = np.ma.getmaskarray(mask)[:,:,np.newaxis]
+            dmask = np.broadcast_to(_mask, data.shape)
+            masked = np.ma.array(data=data, mask=dmask)
+        else:
+            masked = np.ma.array(data=data, mask=np.ma.getmaskarray(mask))
+        return masked
 
 def blend(data, cmaps, res_names):
     """
@@ -141,16 +163,16 @@ class ColorMaps:
     Just a class to store some common colormaps
     """
     green = sb.cubehelix_palette(
-        start=2, rot=0, hue=1, dark=0.10, light=1.0, gamma=1, n_colors=16,
+        start=2, rot=0, hue=1, dark=0.10, light=0.90, gamma=0.7, n_colors=16,
         as_cmap=True)
     blue = sb.cubehelix_palette(
-        start=0, rot=0, hue=1, dark=0.10, light=1.0, gamma=1, n_colors=16,
+        start=0, rot=0, hue=1, dark=0.10, light=0.90, gamma=0.7, n_colors=16,
         as_cmap=True)
     red = sb.cubehelix_palette(
-        start=1, rot=0, hue=1, dark=0.10, light=1.0, gamma=1, n_colors=16,
+        start=1, rot=0, hue=1, dark=0.10, light=0.90, gamma=0.7, n_colors=16,
         as_cmap=True)
     gray = sb.cubehelix_palette(
-        start=0, rot=0, hue=0, dark=0.10, light=1.0, gamma=1, n_colors=16,
+        start=0, rot=0, hue=0, dark=0.10, light=0.90, gamma=0.7, n_colors=16,
         as_cmap=True)
 
 

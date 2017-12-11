@@ -19,7 +19,7 @@ from collections import Iterable
 from IPython.display import HTML
 
 from .utilities import TimedSpinProgessBar, TimedProgressBar, write_temp_file,\
-    ColorMaps, TitleElapsedProgressBar, blend
+    ColorMaps, TitleElapsedProgressBar, blend, check_mask
 
 
 
@@ -38,17 +38,21 @@ class ResourceExperimentAnimation:
         self._resources = None    #Name of resources
         self._is_multi = None     #Are we plotting multiple resources?
         self._world_size = world_size   #The size of the Avida world
-        self._cmap = ColorMaps.green if cmap is None else cmap  #What colormap(s) are we using?
-        self._colors = ['green', 'red', 'blue']  #If multi, how should the legend patches be colored
         self._num_frames = None   #How many frames are we drawing?
         self._interval = interval  #How fast should the animation go?
         self._to_draw = None    #With blitting, what artists do we need to draw?
         self._post_plot = post_plot     #After the axes is drawn, what else should we draw on it?
+
         self._fig = None        #A handle to our figure
         self._last_anim = None     # A cached copy of the last animation rendered; force=True in animat() will replace it.
+
         self._vmin = None   # Maximum value in our dataset
         self._vmax = None   # Minimum value in our dataset
         self._prepare_data()    # Now let's prepare our data
+
+        self._cmap = ColorMaps.green if cmap is None else cmap  #What colormap(s) are we using?
+        self._colors = ['green', 'red', 'blue']  #If multi, how should the legend patches be colored
+
         self._pbar =\
             TimedProgressBar(title='Building Animation', max_value=self._num_frames) if use_pbar else None
         self._title = title  # The title of the plot
@@ -83,15 +87,32 @@ class ResourceExperimentAnimation:
         """
 
         # Create our layout; GridSpec helps considerably with layout
-        # If more height is needed for the description of the figure,alter
-        # the last value of the height ratios.
-        if not self._is_multi:
-            gs = mpl.gridspec.GridSpec(3, 2, width_ratios=[1, 0.1], height_ratios=[1, 0.1, 0.36])
-        else:
-            gs = mpl.gridspec.GridSpec(4, 2, width_ratios=[1, 0.1], height_ratios=[1, 0.1, 0.1, 0.36])
 
+        # Our base setup has
+        num_rows = 2    # A row for the data, a row for the update
+        height_ratios = [1, 0.1]
+        num_cols = 2    # A column for the data plot, a column for the colorbar
+        width_ratios = [1, 0.1]
+
+        if self._is_multi:
+            # If we have multiple resources, include an extra row below for the legend
+            num_rows += 1
+            height_ratios.append(0.1)
+
+        has_descr = True if len(self._env_string + self._event_string) else False
+        if has_descr:
+            # if we need to print some descriptive text, add another at the bottom
+            # change this height ratio to make it larger
+            num_rows += 1
+            height_ratios.append(0.35)
+
+        # Create our grid layout
+        gs = mpl.gridspec.GridSpec(num_rows, num_cols,
+                                   height_ratios=height_ratios,
+
+                                   width_ratios=width_ratios)
         # Plot our empty heatmap
-        ax = plt.subplot(gs[0,0])
+        ax = plt.subplot(gs[0,0])  # Grid 0,0
         z = np.zeros(self._world_size)
         base_cmap = self._cmap if not self._is_multi else ColorMaps.gray
         im = plt.imshow(z, cmap=base_cmap,
@@ -109,7 +130,7 @@ class ResourceExperimentAnimation:
         # Create the colorbar for our figure
         norm = mpl.colors.Normalize(self._vmin, self._vmax)
         self._cmap_norm = norm
-        cax = plt.subplot( gs[:-1,-1] )
+        cax = plt.subplot( gs[0:2,-1] )  # Final column, top two rows
         if not self._is_multi:
             # If it is a single resource, use the cmap for the colorbar
             self._cbar = mpl.colorbar.ColorbarBase(cax, cmap=self._cmap, norm=norm, orientation='vertical')
@@ -121,10 +142,7 @@ class ResourceExperimentAnimation:
 
         # Because only artists within axes are redrawn during blitting, the
         # update text needs its own axes.
-        if not self._is_multi:
-            ax = plt.subplot(gs[-2,0:-1])
-        else:
-            ax = plt.subplot(gs[-3,0:-1])
+        ax = plt.subplot(gs[1,0:-1])  # Second row, all but last column
         ax.set_ylim(0,1)
         ax.set_xlim(0,1)
         ax.tick_params(axis='both', bottom='off', labelbottom='off',
@@ -135,7 +153,7 @@ class ResourceExperimentAnimation:
         # If we're plotting multiple resources, add a legend at the bottom of
         # the figure
         if self._is_multi:
-            ax = plt.subplot(gs[-2,:-1])
+            ax = plt.subplot(gs[2,:-1])  # Third row, all but last column
             legend_handles = []
             for ndx,res_name in enumerate(self._resources):
                 legend_handles.append(mpl.patches.Patch(color=self._colors[ndx], label=res_name))
@@ -146,15 +164,16 @@ class ResourceExperimentAnimation:
 
         # Label with environment and event strings
         # Environment string
-        ax = plt.subplot(gs[-1,:])
-        desc = self._env_string + '\n\n' + self._event_string + '\n\n' + f'World: {self._world_size[0]} x {self._world_size[1]}'
-        env = ax.text(0.05, 1, desc, ha='left', va='top', fontsize=7)
-        ax.tick_params(axis='both', bottom='off', labelbottom='off',
-                               left='off', labelleft='off')
-        ax.set_frame_on(False)
+        if has_descr:
+            ax = plt.subplot(gs[-1,:])
+            desc = self._env_string + '\n\n' + self._event_string + '\n\n' + f'World: {self._world_size[0]} x {self._world_size[1]}'
+            env = ax.text(0.05, 1, desc, ha='left', va='top', fontsize=7)
+            ax.tick_params(axis='both', bottom='off', labelbottom='off',
+                                   left='off', labelleft='off')
+            ax.set_frame_on(False)
+
+        # Put a title on the entire plot
         plt.suptitle(self._title)
-
-
 
         # Store what we need to redraw each frame for blitting.
         # The values in this dictionary may be either a single element
@@ -283,13 +302,18 @@ class ResourceExperimentAnimation:
 
             # Generate frame data for each update and yield it
             for ndx,update in enumerate(updates):
+                raw_data = data[data.iloc[:,0]==update].iloc[:,2:].astype('float')
+                masked_data = np.ma.masked_values(raw_data.sum(axis=0), 0.0).reshape(world_size)
                 if not self._setup._is_multi:
                     yield ndx,\
-                        update, data.iloc[ndx, 2:].values.reshape(world_size).astype('float')
+                        update,\
+                        data.iloc[ndx, 2:].values.reshape(world_size).astype('float'),\
+                        masked_data
                 else:
-                    yield ndx, update, multi_res_colors[ndx,:,:].reshape((world_size[0],world_size[1],3))
-
-
+                    yield ndx,\
+                    update,\
+                    multi_res_colors[ndx,:,:].reshape((world_size[0],world_size[1],3)),\
+                    masked_data
 
 
 
@@ -315,12 +339,12 @@ class ResourceExperimentAnimation:
 
             :return: An iterable of artists to draw
             """
-            ndx, update, data = info  # From our generator
+            ndx, update, data, mask = info  # From our generator
             title = self._setup._title # The title of the plot
             cmap = self._setup._cmap # The colormap for the plot
 
             # Update our figure's objects
-            self._setup['plot'].set_array(data)
+            self._setup['plot'].set_array(check_mask(data,mask))
             self._setup['update'].set_text(f'Update {update}')
 
             # Do any post-drawing updates we've requested
@@ -334,6 +358,8 @@ class ResourceExperimentAnimation:
 
             # Return the artists that need to be drawn
             return self._setup.get_drawables()
+
+
 
 
 
@@ -400,7 +426,7 @@ class ResourceExperiment:
 
     default_args = '-s -1'
     default_events ='\
-    u begin Inject default-heads.org\n\
+    u begin Inject default-heads-norep.org\n\
     u 0:100:end PrintSpatialResources resources.dat\n\
     u 25000 exit\n'
 
