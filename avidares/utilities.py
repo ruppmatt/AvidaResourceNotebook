@@ -16,6 +16,22 @@ import pyximport; pyximport.install(
 from .blender import blender
 
 
+def save_n_html(path, anim, env, events='', args='', animkw={}):
+    _ = anim.animate(animkw=animkw)
+    html = _.to_html5_video()
+    title = anim._title.replace('\n', ' ')
+    title = title.replace('/', '-')
+    title = title.replace(':', '-')
+    comments = f'[ENVIRONMENT]\n{env}\n\n[EVENTS]\n{events}\n\n[ARGS]\n{args}'
+    metadata = {
+        'artist':'AvidaED Development',
+        'title':f'{anim._title}',
+        'description':comments
+    }
+    path = f'{path}/{title}.mp4'
+    _.save(path, dpi=300, metadata=metadata)
+    mpl.pyplot.close()
+    return html
 
 def check_mask(data, mask):
     """

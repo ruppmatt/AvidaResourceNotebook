@@ -1,4 +1,5 @@
 import matplotlib as mpl
+from copy import copy
 
 
 class BlitArtist:
@@ -53,11 +54,12 @@ class BRectangle(mpl.patches.Rectangle, BlitArtist):
 
         :return: ourself, since we're actually an artist
         """
-        mpl.patches.Rectangle.__init__(self, self._xy, self._width, self._height, **self._artist_kw)
-        ax.add_patch(self)
-        self._ax_ndx = ax_ndx
-        self._build_kw == kw
-        return self
+        obj = self if ax_ndx is None else copy(self)
+        mpl.patches.Rectangle.__init__(obj, obj._xy, obj._width, obj._height, **obj._artist_kw)
+        ax.add_patch(obj)
+        obj._ax_ndx = ax_ndx
+        obj._build_kw == kw
+        return obj
 
     def blit_update(self, frame, update, ax_ndx=None, **kw):
         """
@@ -84,11 +86,12 @@ class BCircle(mpl.patches.Circle, BlitArtist):
         self._radius = radius
 
     def blit_build(self, ax, ax_ndx=None, **kw):
-        mpl.patches.Circle.__init__(self, self._xy, self._radius, **self._artist_kw)
-        ax.add_patch(self)
-        self._ax_ndx = ax_ndx
-        self._build_data == kw
-        return self
+        obj = self if ax_ndx is None else copy(self)
+        mpl.patches.Circle.__init__(obj, obj._xy, obj._radius, **obj._artist_kw)
+        ax.add_patch(obj)
+        obj._ax_ndx = ax_ndx
+        obj._build_data == kw
+        return obj
 
     def blit_update(self, frame, update, ax_ndx=None, **kw):
         pass
@@ -102,9 +105,10 @@ class BAnnotation(mpl.text.Annotation, BlitArtist):
         BlitArtist.__init__(self, bdata, **kw)
 
     def blit_build(self, ax, ax_ndx=None, **kw):
-        mpl.text.Annotation.__init__(self, **self._artist_kw)
-        ax.add_artist(self)
-        return self
+        obj = self if ax_ndx is None else copy(self)
+        mpl.text.Annotation.__init__(obj, **obj._artist_kw)
+        ax.add_artist(obj)
+        return obj
 
 
 
@@ -120,17 +124,18 @@ class BCellHighlighter(mpl.collections.PatchCollection, BlitArtist):
         self._gridshape = gridshape
 
     def blit_build(self, ax, ax_ndx=None, **kw):
-        x,y=self._gridshape
+        obj = self if ax_ndx is None else copy(self)
+        x,y = obj._gridshape
         patches = []
         for r in range(y):
             for c in range(x):
-                offset = 0 if not self._imshow else 0.5
+                offset = 0 if not obj._imshow else 0.5
                 xx = r-offset
                 yy = c-offset
-                patch = mpl.patches.Rectangle((xx,yy), width=1, height=1, **self._artist_kw)
+                patch = mpl.patches.Rectangle((xx,yy), width=1, height=1, **obj._artist_kw)
                 patches.append(patch)
-        mpl.collections.PatchCollection.__init__(self, patches)
-        ax.add_collection(self)
-        self.set_edgecolors('none')
-        self.set_facecolors('none')
-        return self
+        mpl.collections.PatchCollection.__init__(obj, patches)
+        ax.add_collection(obj)
+        obj.set_edgecolors('none')
+        obj.set_facecolors('none')
+        return obj

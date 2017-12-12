@@ -27,7 +27,7 @@ class ResourceFactoredExperimentAnimation:
     _multi_res_cmap = [ColorMaps.green, ColorMaps.red, ColorMaps.blue]
 
     def __init__(self, experiment, title='', cmap=None, use_pbar=True, interval=50,
-            post_plot=[], env_string='', event_string='', **kw):
+            post_plot=[], env_str='', event_str='', **kw):
 
         self._experiment = experiment  #Let's keep our data clean
         self._dims = experiment.get_dims()
@@ -53,8 +53,8 @@ class ResourceFactoredExperimentAnimation:
         self._pbar =\
             TimedProgressBar(title='Building Animation', max_value=self._num_frames) if use_pbar else None
         self._title = title  # The title of the plot
-        self._env_string = env_string
-        self._event_string = event_string
+        self._env_str = env_str
+        self._event_str = event_str
         if not self._is_multi:  #Handle our colormaps
             self._cmap = ColorMaps.green if cmap is None else cmap
         else:
@@ -100,16 +100,16 @@ class ResourceFactoredExperimentAnimation:
 
         # Set up our base row count
         num_rows = plots_y + 1  # Add one more row for the update number
-        height_ratios = [1] * plots_y + [0.1]
+        height_ratios = [1] * plots_y + [0.25]
         num_cols = plots_x + 1  # Add one more column for the colorbar
-        width_ratios = [1] * plots_x + [0.1]
+        width_ratios = [1] * plots_x + [0.25]
 
         if self._is_multi:
             # If we have multiple resources, add another row for the resource legend
             num_rows += 1
             height_ratios.append(0.1)
 
-        has_descr = True if len(self._env_string + self._event_string) > 0 else False
+        has_descr = True if len(self._env_str + self._event_str) > 0 else False
         if has_descr:
             # if we need to print some descriptive text, add another at the bottom
             # change this height ratio to make it larger
@@ -176,7 +176,7 @@ class ResourceFactoredExperimentAnimation:
         # If we have an environment and event strings, plot them in the final row across all columns
         if has_descr:
             ax = plt.subplot(gs[-1,:])
-            desc = self._env_string + '\n\n' + self._event_string + '\n\n' + f'World: {self._world_size[0]} x {self._world_size[1]}'
+            desc = self._env_str + '\n\n' + self._event_str + '\n\n' + f'World: {self._world_size[0]} x {self._world_size[1]}'
             env = ax.text(0.05, 1, desc, ha='left', va='top', fontsize=7)
             ax.tick_params(axis='both', bottom='off', labelbottom='off',
                                    left='off', labelleft='off')
@@ -393,6 +393,8 @@ class ResourceFactoredExperimentAnimation:
                     pp.blit_update(frame, update, ax_ndx=ndx)
             if self._setup._pbar:
                 self._setup._pbar.update(frame)
+                if frame == self._setup._num_frames - 1:
+                    self._setup._pbar.finish()
             return self._setup.get_drawables()
 
 
@@ -508,42 +510,44 @@ class ResourceFactoredExperiment:
         'end':10000
     }
 
-    _default_events_string =\
+    _default_events_str =\
         'u begin Inject default-heads-norep.org\n' +\
         'u 0:{interval}:end PrintSpatialResources {datafile}\n' +\
         'u {end} exit'
 
 
-    def __init__(self, env_string, factors, args_string='', args_dict={}, events_str=None,
+    def __init__(self, env_str, factors, args_str='', args_dict={}, events_str=None,
         events_dict={}, procs=4, exec_directory='default_config', **kw):
         """
         Initialize the ResourceFactoredExperiment.  It is not run until run_experiments()
         is called.
 
-        :param env_string: The environment string to use for the experiment.  Python curly brace {arg}
+        :param env_str: The environment string to use for the experiment.  Python curly brace {arg}
                             style formatting is used for substitution for factor values.
         :param factors: A list of key,list pairs (or dictionary) that is used to substitute values
                         in the environment string.
-        :param args_string: Additional values to append at the end of the default argument string
+        :param args_str: Additional values to append at the end of the default argument string
         :param args_dict:  Additional values or overrides for the default argument string
-        :param events_string: Overrides default_events string
+        :param events_str: Overrides default_events string
         :param events_dict: Addtional values or overrides for the default events string
         :param procs: The number of child subprocesses to spawn at one time
         :param exec_dir: The directory in which to execute the experiments
         """
-        self._env_string = env_string
+        self._env_str = env_str
         self._factors = factors
         self._factor_names = [k for k,v in self._factors]
         self._exec_dir = exec_directory
         self._max_procs = procs
         self._reset()
-        self._events_str = self._default_events_string if events_str is None else events_str
+        self._events_str = self._default_events_str if events_str is None else events_str
         self._events_dict = self._default_events_dict
         self._events_dict.update(events_dict)
-        self._args_str = self._default_args + ' ' + args_string
+        self._args_str = self._default_args + ' ' + args_str
         self._args_dict = self._default_args_dict
         self._args_dict.update(args_dict)
-
+        self._used_environment = None
+        self._used_events = None
+        self._used_args = None
 
     def _reset(self):
         """
@@ -559,6 +563,9 @@ class ResourceFactoredExperiment:
         self._stdout_files = []
         self._child_procs = []
         self._child_exit_codes = {}
+        self._used_environment = None
+        self._used_events = None
+        self._used_args = None
 
 
     def get_factors(self):
@@ -603,6 +610,10 @@ class ResourceFactoredExperiment:
             # Hold on to our active child processes
             active_procs = set()
 
+            self._used_args = self._args_str + '\ndict=' + str(self._args_dict)
+            self._used_environment = self._env_str + '\nfactors=' + str(self._factors)
+            self._used_events = self._events_str + '\ndict=' + str(self._events_dict)
+
             try:
                 for ndx, settings in enumerate(self):
                     # For each factor combination
@@ -621,7 +632,7 @@ class ResourceFactoredExperiment:
 
                     # Patch our default environment dictionary with our experiment
                     # factors' settings and create our environment file
-                    env_str = self._env_string.format(**dict(settings))
+                    env_str = self._env_str.format(**dict(settings))
                     with NamedTemporaryFile(dir=self._data_dir, mode='w', delete=False) as env_file:
                         env_file.write(env_str)
                         self._env_files.append(env_file.name)

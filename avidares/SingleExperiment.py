@@ -447,6 +447,9 @@ class ResourceExperiment:
         self._events = events if events is not None else self.default_events
         self._pbar = TimedSpinProgessBar('Running experiment') if use_pbar else None
         self._data = None
+        self._used_events = None
+        self._used_environment = None
+        self._used_args = None
 
 
     def run_experiment(self):
@@ -457,6 +460,7 @@ class ResourceExperiment:
         """
         args = self._args
         args += f' -set WORLD_X {self._world_size[0]} -set WORLD_Y {self._world_size[1]}'
+        self._used_args = args
 
         path = write_temp_file(self._environment)
         args += f' -set ENVIRONMENT_FILE {path}'
@@ -467,6 +471,11 @@ class ResourceExperiment:
         # Create a temporary directory to hold our avida output
         self._data_dir = tempfile.TemporaryDirectory()
         args += f' -set DATA_DIR {self._data_dir.name}'
+
+        # Store for later use
+
+        self._used_environment = self._environment
+        self._used_events = self._events
 
         # Run avida
         self._run_process('./avida ' + args)
@@ -517,6 +526,7 @@ class ResourceExperiment:
         # This may not work properly on Windows because reasons.  There's
         # a lot of dicussion online about how to alter it so that it does
         # work in Windows.
+
         proc = subprocess.Popen(args,
                                 cwd=self._cwd,
                                 shell=True,
