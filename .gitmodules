@@ -1,0 +1,3 @@
+[submodule "avidares"]
+	path = avidares
+	url = https://github.com/ruppmatt/avidares
